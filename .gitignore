@@ -1,0 +1,27 @@
+# Python & packaging artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+*.tar.gz
+*.tar.bz2
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Generated test outputs
+plots/
+*.out
+*.adf
+fort.*
+

@@ -1,0 +1,35 @@
+NEC-81 (Python / NumPy Implementation) v2.2.0
+==============================================
+
+Prerequisites
+-------------
+- Python 3.10 or newer
+- pip (Python package installer)
+
+Note: Do not rename the .whl or .tar.gz files; pip uses the exact
+filename to verify version and compatibility.
+
+Installation
+------------
+Open a terminal (Linux/macOS) or Command Prompt / PowerShell (Windows)
+inside this folder and run one of the following commands:
+
+1. Full install (recommended - includes CLI, 3D plots, and PySide6 GUI):
+   pip install "nec81-2.2.0-py3-none-any.whl[full]"
+
+2. CLI + Matplotlib plots only (no GUI):
+   pip install "nec81-2.2.0-py3-none-any.whl[plots]"
+
+3. Core solver only (NumPy required):
+   pip install nec81-2.2.0-py3-none-any.whl
+
+Tip: On Linux systems that block system-wide pip installs (PEP 668),
+either activate a virtual environment first or append --user:
+   pip install --user "nec81-2.2.0-py3-none-any.whl[full]"
+
+Quick Verification
+------------------
+Run either command from any directory to confirm installation:
+   nec81 --help
+   mainsa --help
+
