@@ -1,37 +1,10 @@
-# NEC-81 (Python / NumPy)
+# NEC-81 in Python: Numerical Electromagnetics Code (NEC-2)
 
-A Python and NumPy implementation of the NEC-81 (NEC-2) antenna modeling code.
+*Mike Markowski, AB3AP* (`mike.ab3ap@gmail.com`)
 
-## Requirements
-* Python >= 3.10
-* NumPy >= 1.24
-* Optional: Matplotlib >= 3.7 (3D geometry & radiation plots), PySide6 >= 6.5 (GUI)
+**Documentation & Plot Examples:**
+* [GitHub Pages Mirror](https://github.io)
+* [University of Delaware Host](https://udel.edu)
 
-## Installation from Release Package
-
-From the extracted `nec81/` release folder:
-
-```bash
-# Full installation (CLI, plots, and GUI)
-pip install "nec81-2.2.0-py3-none-any.whl[full]"
-
-# Core solver only
-pip install nec81-2.2.0-py3-none-any.whl
-```
-
-*(If installing from source instead of the wheel, run `pip install ".[full]"` from the directory containing `pyproject.toml`.)*
-
-## Usage
-
-### Command Line
-```bash
-nec81 input.nec output.out
-```
-
-### Python API
-```python
-from nec81.mainsa import runNec81
-
-runNec81('input.nec', 'output.out')
-```
+A Python and NumPy conversion of **NEC-81 (v2.2)** based on classical NEC-2 solvers and ports, retaining the full Method of Moments (MoM) features while integrating modern configuration files, Matplotlib 2D/3D visualization, NSMA `.adf` export, and a PySide6 GUI. For complete details, features, installation instructions, and syntax guidelines, please refer to the {Link: NEC-81 Documentation https://github.io}.
 
