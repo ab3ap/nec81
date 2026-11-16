@@ -1,37 +1,29 @@
-# NEC-81 (Python / NumPy)
+# NEC-81 in Python: Numerical Electromagnetics Code (NEC-2)
 
-A Python and NumPy implementation of the NEC-81 (NEC-2) antenna modeling code.
+*Mike Markowski, AB3AP* (`mike.ab3ap@gmail.com`)
 
-## Requirements
-* Python >= 3.10
-* NumPy >= 1.24
-* Optional: Matplotlib >= 3.7 (3D geometry & radiation plots), PySide6 >= 6.5 (GUI)
+* **Documentation & Plot Examples:** https://ab3ap.github.io/nec81/
+* **University of Delaware Mirror:** https://udel.edu/~mm/nec81/
 
-## Installation from Release Package
+A complete Python and NumPy conversion of **NEC-81 (v2.2)** preserving the full Method of Moments (MoM) solver with modern config files, 2D/3D Matplotlib visualization, NSMA `.adf` export, and a PySide6 GUI.
 
-From the extracted `nec81/` release folder:
+## Features & Installation
 
-```bash
-# Full installation (CLI, plots, and GUI)
-pip install "nec81-2.2.0-py3-none-any.whl[full]"
+* **Core Features:** Full NEC-2 solver core (wires, surface patches, symmetry, transmission lines, loads, ground models, and near-field grids), flexible input formats, interactive PySide6 GUI, and NSMA WG16.99.050 `.adf` export.
+* **Quick Install:** 
+  ```bash
+  pip install "nec81[full] @ git+https://github.com"
+  ```
+  *(See documentation for release archive installation options).*
 
-# Core solver only
-pip install nec81-2.2.0-py3-none-any.whl
-```
+## Usage & Configuration
 
-*(If installing from source instead of the wheel, run `pip install ".[full]"` from the directory containing `pyproject.toml`.)*
+* **Desktop GUI:** Run `nec81` with no arguments or pass a `.nec` / `.cfg` file to launch the six-tab PySide6 interface.
+* **Command-Line & Batch Mode:** Use flags like `-o`, `--cli`, `--config FILE`, or `-t` to generate starter configurations and run headlessly. Configuration files (`.cfg`) support plain-text parameters and embedded model cards.
 
-## Usage
+## Full Documentation
 
-### Command Line
-```bash
-nec81 input.nec output.out
-```
-
-### Python API
-```python
-from nec81.mainsa import runNec81
-
-runNec81('input.nec', 'output.out')
-```
+For the complete NEC-2 card reference, configuration parameter table, and
+sample plots, visit https://ab3ap.github.io/nec81/ or
+https://udel.edu/~mm/nec81/.
 
