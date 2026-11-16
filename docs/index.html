@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NEC-81 in Python: Numerical Electromagnetics Code (NEC-2)</title>
+  <style>
+    body {
+      max-width: 860px;
+      margin: 2em auto;
+      padding: 0 1.2em;
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.55;
+      color: #111;
+      background: #fff;
+    }
+    h1, h2, h3 {
+      font-family: Helvetica, Arial, sans-serif;
+      margin-top: 1.7em;
+    }
+    h1 {
+      border-bottom: 1px solid #999;
+      padding-bottom: 0.3em;
+    }
+    h2 {
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 0.2em;
+    }
+    pre, code {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 0.91em;
+      background: #f5f5f5;
+    }
+    pre {
+      padding: 0.8em 1em;
+      border: 1px solid #ddd;
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1em 0;
+      font-size: 0.92em;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.45em 0.65em;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f0f0f0;
+      font-family: Helvetica, Arial, sans-serif;
+    }
+    .note {
+      background: #f9f9f9;
+      border-left: 3px solid #888;
+      padding: 0.6em 1em;
+      margin: 1em 0;
+    }
+  </style>
+</head>
+<body>
+
+<h1>NEC-81 in Python: Numerical Electromagnetics Code (NEC-2)</h1>
+
+<p><i><a href="https://udel.edu/~mm/">Mike Markowski,</a></i>
+<tt>mike.ab3ap@gmail.com</tt><br>
+<p><em>This page is hosted at both
+<a href=https://udel.edu/~mm/nec81>University of Delaware</a>
+and
+<a href=https://github.com/ab3ap/nec81>GitHub</a></em></p>
+
+<figure style="margin: 1.5em 0; text-align: center;">
+  <img src="collage.png" alt="NEC-81 PySide6 GUI and 3D radiation pattern" style="max-width: 100%; height: auto; border: 1px solid #ccc;">
+  <figcaption style="font-size: 0.9em; color: #555; margin-top: 0.4em;">
+    NEC-81 wire/patch geometry alongside 3D far-field pattern.
+  </figcaption>
+</figure>
+
+<p>
+  This is a complete Python and NumPy conversion of the classic
+  <strong>NEC-81 (v2.2)</strong> implementation of the Numerical
+  Electromagnetics Code (NEC-2). It preserves the full Method of Moments
+  (MoM) solver for thin wires, surface patches, wire-to-patch junctions,
+  reflection and rotational symmetry, transmission lines, two-port networks,
+  lumped and distributed impedance loading, Sommerfeld/Norton ground,
+  near-field grids, and Numerical Green's Functions (N.G.F.), while adding
+  modern configuration files, 2D/3D Matplotlib plots, and an optional
+  PySide6 GUI.
+</p>
+
+<h2>Background</h2>
+
+<p>
+  Developed at Lawrence Livermore National Laboratory by Gerald Burke and
+  Andrew Poggio in the late 1970s and early 1980s, NEC-2 became the standard
+  antenna modeling engine for amateur radio operators, engineers, and
+  researchers alike. The codebase converted here traces back to David J.
+  Pinion's 1989 NEC-81 v2.2 distribution and OH3MCK's 1991 Sun-4 Unix port.
+</p>
+
+<p>
+  Original Fortran NEC decks are unforgiving with strict 80-column field
+  alignments and terse two-letter cards. This Python port accepts both classic
+  fixed-column decks and modern comma- or space-delimited decks, while also
+  supporting self-documented configuration files and an interactive GUI.
+</p>
+
+<h2>Installation</h2>
+
+<p>The core solver requires only <code>numpy</code>, with optional extras for Matplotlib plots and the PySide6 GUI. Install directly via <a href="https://github.com">GitHub</a> or download the latest release archives:</p>
+
+<h3>Option A: Install from GitHub</h3>
+<pre><code># Core solver (headless)
+$ pip install "nec81 @ git+https://github.com.git"
+
+# With Matplotlib plots or full GUI (replace [plots] with [full] as needed)
+$ pip install "nec81[full] @ git+https://github.com.git"
+</code></pre>
+
+<h3>Option B: Install from Release Archives</h3>
+<p>Download <a href="nec81-2.2.0-release.tar.gz">nec81-2.2.0-release.tar.gz</a> and <a href="examples.tar.bz2">examples.tar.bz2</a> (dated 15 Nov 2026), then install the wheel:</p>
+<pre><code>$ tar jxf examples.tar.bz2
+$ tar zxf nec81-2.2.0-release.tar.gz
+$ cd nec81
+$ pip install nec81-2.2.0-py3-none-any.whl[full]
+</code></pre>
+<p><em>Note:</em> Keep the <code>.whl</code> filename unchanged for compatibility checks, and run the tool globally using <code>nec81</code>.</p>
+
+<p>
+  Running <code>nec81.py</code> with no arguments or with a single
+  <code>.nec</code> or <code>.cfg</code> file opens the PySide6 GUI
+  interface directly. Passing an output report file, configuration flag,
+  plotting flag, or <code>--cli</code> runs headlessly in command-line mode:
+</p>
+
+<pre>$ nec81.py                                   # Open GUI with a new deck
+$ nec81.py 06_6m_5el_yagi.nec                     # Open deck in GUI
+$ nec81.py 06_6m_5el_yagi.cfg                     # Open config in GUI
+$ nec81.py 06_6m_5el_yagi.nec 06_6m_5el_yagi.out  # Run batch CLI mode
+$ nec81.py --config 06_6m_5el_yagi.cfg            # Run from config file
+$ nec81.py --write-config-template my_antenna.cfg # Generate starter .cfg
+$ nec81.py --cli                                  # Original Unit 23/24 prompt</pre>
+
+<table>
+  <tr>
+    <th>Option</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td><code>[inputFile]</code></td>
+    <td>Open a <code>.nec</code> deck or <code>.cfg</code> file in the GUI (when given alone), or specify the input deck for batch CLI mode.</td>
+  </tr>
+  <tr>
+    <td><code>[outputFile]</code></td>
+    <td>Destination path for the printed NEC report (implies headless CLI mode).</td>
+  </tr>
+  <tr>
+    <td><code>-o</code> / <code>--cli</code> / <code>--no-gui</code></td>
+    <td>Run in command-line mode without opening the GUI (prompts interactively for Unit 23 and Unit 24 if no files are given).</td>
+  </tr>
+  <tr>
+    <td><code>-g</code> / <code>--gui [DECK_OR_CFG]</code></td>
+    <td>Explicitly launch the PySide6 GUI interface, optionally preloading a <code>.nec</code> or <code>.cfg</code> file.</td>
+  </tr>
+  <tr>
+    <td><code>-c</code> / <code>--config FILE</code></td>
+    <td>Load settings (and optional embedded model cards) from a <code>.cfg</code> file and run in CLI mode.</td>
+  </tr>
+  <tr>
+    <td><code>-t</code> / <code>--write-config-template [PATH]</code></td>
+    <td>Generate a commented starter configuration file (default: <code>nec81.cfg</code>) and exit.</td>
+  </tr>
+  <tr>
+    <td><code>--plots3d</code> / <code>--no-plots3d</code></td>
+    <td>Enable or disable Matplotlib plot generation in CLI mode.</td>
+  </tr>
+  <tr>
+    <td><code>-d</code> / <code>--plot-directory DIR</code></td>
+    <td>Output directory for saved plot images (default: <code>plots</code>).</td>
+  </tr>
+  <tr>
+    <td><code>--show-sources</code> / <code>--no-show-sources</code></td>
+    <td>Show or hide excitation source markers (magenta diamonds) on 3D geometry plots.</td>
+  </tr>
+  <tr>
+    <td><code>--show-loads</code> / <code>--no-show-loads</code></td>
+    <td>Show or hide impedance load markers (green squares) on 3D geometry plots.</td>
+  </tr>
+  <tr>
+    <td><code>--show-plots</code> / <code>--no-show-plots</code></td>
+    <td>Keep interactive Matplotlib windows open for rotation and zooming after completion.</td>
+  </tr>
+</table>
+
+<h2>2. Desktop GUI &amp; Visualization Suite</h2>
+
+<p>
+  Launching <code>nec81.py</code> opens a six-tab PySide6 GUI:
+</p>
+
+<ul>
+  <li><strong>Card Editor:</strong> Structured card table with labeled parameter fields and built-in documentation for every NEC-2 card.</li>
+  <li><strong>Raw Deck:</strong> Full-text editor synchronized bidirectionally with the structured card table.</li>
+  <li><strong>Geometry Preview:</strong> Interactive 3D preview applying <code>GM</code>, <code>GR</code>, <code>GS</code>, and <code>GX</code> transforms in deck order before running the solver.</li>
+  <li><strong>Run:</strong> Configures report/plot paths and toggles (3D plots, Geometry, Patterns, Fields, Sources, Loads) and runs the solver in a background process (<code>F5</code>) with live stdout streaming.</li>
+  <li><strong>Report:</strong> Displays the formatted NEC-81 text output report.</li>
+  <li><strong>Saved Plots:</strong> Browses all generated figures in the output directory.</li>
+</ul>
+
+<h3>Generated Plot Suite</h3>
+
+<p>Here are examples of plots from NEC-81.  In this case, a 5-element Yagi
+for 6m is shown.  You can open each image in another tab to see it in more
+detail.
+
+<div style="display: flex; flex-wrap: wrap; gap: 1em; justify-content: center; margin: 1.5em 0;">
+  <figure style="flex: 1 1 250px; margin: 0; text-align: center;">
+    <img src="yagiGeom.png" alt="6m 5-element Yagi 3D geometry and RF currents" style="max-width: 100%; height: auto; border: 1px solid #ccc;">
+    <figcaption style="font-size: 0.88em; color: #555; margin-top: 0.3em;">
+      3D geometry with RF current magnitude coloring and feedpoint marker.
+    </figcaption>
+  </figure>
+  <figure style="flex: 1 1 250px; margin: 0; text-align: center;">
+    <img src="yagiFF.png" alt="6m 5-element Yagi 3D radiation pattern" style="max-width: 100%; height: auto; border: 1px solid #ccc;">
+    <figcaption style="font-size: 0.88em; color: #555; margin-top: 0.3em;">
+      3D gain-colored far-field wireframe pattern (35 dB dynamic range).
+    </figcaption>
+  </figure>
+  <figure style="flex: 1 1 250px; margin: 0; text-align: center;">
+    <img src="yagiAzEl.png" alt="6m 5-element Yagi 2D polar azimuth and elevation cuts" style="max-width: 100%; height: auto; border: 1px solid #ccc;">
+    <figcaption style="font-size: 0.88em; color: #555; margin-top: 0.3em;">
+      2D polar Azimuth and Elevation cuts with F/B ratio and &minus;3 dB beamwidth.
+    </figcaption>
+  </figure>
+</div>
+
+<ul>
+  <li><code>antennaGeometry3d</code>: 3D wire segments colored by solved RF current magnitude <code>|I|</code> (Amps), exact triangular/quadrilateral surface patch polygons, and optional source/load markers.</li>
+  <li><code>radiationPatternWireframe3d</code>: Dynamic-range clamped (35 dB) color-graded 3D far-field wireframe pattern labeled with frequency and peak gain (dBi).</li>
+  <li><code>polarCuts</code>: Side-by-side 2D polar Azimuth and Elevation cuts through the main lobe with automatic Front-to-Back ratio and &minus;3 dB beamwidth annotations (or multi-frequency color overlays during <code>FR</code> sweeps).</li>
+  <li><code>frequencySweep</code>: Three-panel 2D chart showing VSWR, feedpoint resistance/reactance (<code>R + jX</code>), and peak gain across frequency sweeps.</li>
+  <li><code>Near_Electric_Field3d</code> / <code>Near_Magnetic_Field3d</code>: 3D spatial scatter plots of near-field peak magnitudes for <code>NE</code> and <code>NH</code> grids.</li>
+</ul>
+
+<h2>3. Modern Configuration Files</h2>
+
+<p>
+  Configuration files use plain-text <code>var val</code> lines. Comments begin
+  with <code>#</code>, and relative file paths are resolved from the directory
+  containing the configuration file.  Sample .nec card decks and .cfg
+  configs are available in <a href=examples.tar.bz2>examples.tar.bz2</a>.
+  Many times examples are better than descriptions.
+</p>
+
+<table>
+  <tr>
+    <th>Setting</th>
+    <th>Type</th>
+    <th>Default</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td><code>inputFile</code></td>
+    <td>path</td>
+    <td><code>""</code></td>
+    <td>Path to an external <code>.nec</code> deck (omit when using embedded <code>card.*</code> groups).</td>
+  </tr>
+  <tr>
+    <td><code>outputFile</code></td>
+    <td>path</td>
+    <td><code>""</code></td>
+    <td>Destination path for the standard NEC text report.</td>
+  </tr>
+  <tr>
+    <td><code>plots3d</code></td>
+    <td>bool</td>
+    <td><code>false</code></td>
+    <td>Master switch (<code>true</code>/<code>false</code>) enabling plot generation.</td>
+  </tr>
+  <tr>
+    <td><code>plotGeometry</code></td>
+    <td>bool</td>
+    <td><code>true</code></td>
+    <td>Generate 3D wire &amp; patch geometry with RF current magnitude coloring.</td>
+  </tr>
+  <tr>
+    <td><code>plotPatterns</code></td>
+    <td>bool</td>
+    <td><code>true</code></td>
+    <td>Generate 3D far-field pattern wireframes and 2D polar Azimuth/Elevation cuts.</td>
+  </tr>
+  <tr>
+    <td><code>plotFields</code></td>
+    <td>bool</td>
+    <td><code>true</code></td>
+    <td>Generate 3D scalar scatter plots for <code>NE</code> / <code>NH</code> near-field grids.</td>
+  </tr>
+  <tr>
+    <td><code>showSources</code></td>
+    <td>bool</td>
+    <td><code>true</code></td>
+    <td>Overlay excitation source locations (<code>EX</code>) on the 3D geometry plot.</td>
+  </tr>
+  <tr>
+    <td><code>showLoads</code></td>
+    <td>bool</td>
+    <td><code>false</code></td>
+    <td>Overlay impedance-loaded segments (<code>LD</code>) on the 3D geometry plot.</td>
+  </tr>
+  <tr>
+    <td><code>plotDirectory</code></td>
+    <td>path</td>
+    <td><code>plots</code></td>
+    <td>Directory where rendered plot images are saved.</td>
+  </tr>
+  <tr>
+    <td><code>plotFormat</code></td>
+    <td>string</td>
+    <td><code>png</code></td>
+    <td>Image format passed to Matplotlib (<code>png</code>, <code>svg</code>, or <code>pdf</code>).</td>
+  </tr>
+  <tr>
+    <td><code>showPlots</code></td>
+    <td>bool</td>
+    <td><code>true</code></td>
+    <td>Keep interactive Matplotlib windows open after saving images.</td>
+  </tr>
+</table>
+
+<h3>Self-Contained Models via Card Groups</h3>
+
+<p>
+  Instead of referencing an external <code>.nec</code> file, an entire antenna
+  model can be written inside a configuration file using
+  <code>card.&lt;group&gt;.&lt;field&gt; value</code> lines. Groups are emitted in
+  the order they first appear and accept either two-letter NEC card codes or
+  descriptive names:
+</p>
+
+<pre>card.title.kind comment
+card.title.text "Center-fed half-wave dipole at 299.79 MHz"
+card.commentEnd.kind commentEnd
+
+card.driven.kind wire
+card.driven.tag 1
+card.driven.segments 21
+card.driven.x1_m -0.25
+card.driven.y1_m 0
+card.driven.z1_m 0
+card.driven.x2_m 0.25
+card.driven.y2_m 0
+card.driven.z2_m 0
+card.driven.radius_m 0.001
+
+card.geometryEnd.kind geometryEnd
+card.geometryEnd.groundFlag 0
+
+card.frequency.kind frequency
+card.frequency.stepType 0
+card.frequency.count 1
+card.frequency.start_MHz 299.792458
+
+card.source.kind excitation
+card.source.type 0
+card.source.tag 1
+card.source.segment 11
+card.source.real_V 1
+card.source.imag_V 0
+
+card.pattern.kind radiationPattern
+card.pattern.mode 0
+card.pattern.thetaCount 19
+card.pattern.phiCount 37
+card.pattern.flags 1000
+card.pattern.startTheta_deg 0
+card.pattern.startPhi_deg 0
+card.pattern.thetaStep_deg 10
+card.pattern.phiStep_deg 10
+
+card.execute.kind execute
+card.end.kind end
+
+outputFile dipole.out
+plots3d true
+showSources true
+showLoads false
+plotDirectory plots
+plotFormat png
+showPlots true</pre>
+
+<h2>4. Supported NEC-2 Card Reference</h2>
+
+<p>The original NEC-81 documentation is recommended to fully understand
+options available.  For those already familiar, here is a summary of
+supported cards in this python version of NEC-81.
+
+<table>
+  <tr>
+    <th>Code</th>
+    <th>Descriptive Name</th>
+    <th>Parameters</th>
+    <th>Purpose</th>
+  </tr>
+  <tr><td><code>CM</code></td><td><code>comment</code></td><td>Text</td><td>Comment line in header section.</td></tr>
+  <tr><td><code>CE</code></td><td><code>commentEnd</code></td><td>Text</td><td>Ends the initial comment header.</td></tr>
+  <tr><td><code>GW</code></td><td><code>wire</code></td><td>Tag, Segments, X1_m, Y1_m, Z1_m, X2_m, Y2_m, Z2_m, Radius_m</td><td>Straight wire divided into equal segments.</td></tr>
+  <tr><td><code>GC</code></td><td><code>wireTaper</code></td><td>Unused1, Unused2, SegmentLengthRatio, StartRadius_m, EndRadius_m</td><td>Tapers segment length and radius on preceding <code>GW</code> (when Radius=0).</td></tr>
+  <tr><td><code>GA</code></td><td><code>arc</code></td><td>Tag, Segments, Radius_m, Start_deg, End_deg, WireRadius_m</td><td>Circular wire arc in the X-Z plane.</td></tr>
+  <tr><td><code>GH</code></td><td><code>helix</code></td><td>Tag, Segments, TurnSpacing_m, Length_m, StartRadiusX_m, StartRadiusY_m, EndRadiusX_m, EndRadiusY_m, WireRadius_m</td><td>Uniform or tapered helix / spiral.</td></tr>
+  <tr><td><code>SP</code></td><td><code>surfacePatch</code></td><td>Tag, Shape, X1_m, Y1_m, Z1_m, X2_orTheta, Y2_orPhi, Z2_m</td><td>Defines an arbitrary (0), rectangular (1), triangular (2), or quadrilateral (3) patch.</td></tr>
+  <tr><td><code>SC</code></td><td><code>patchContinuation</code></td><td>Unused, Shape, X3_m, Y3_m, Z3_m, X4_m, Y4_m, Z4_m</td><td>Supplies remaining corners for <code>SP</code> or <code>SM</code> patches.</td></tr>
+  <tr><td><code>SM</code></td><td><code>multiplePatches</code></td><td>CountX, CountY, X1_m, Y1_m, Z1_m, X2_m, Y2_m, Z2_m</td><td>Generates a rectangular <code>CountX &times; CountY</code> grid of surface patches.</td></tr>
+  <tr><td><code>GM</code></td><td><code>move</code></td><td>TagIncrement, Copies, RotateX_deg, RotateY_deg, RotateZ_deg, TranslateX_m, TranslateY_m, TranslateZ_m, StartTag</td><td>Rotates, translates, or duplicates structure elements.</td></tr>
+  <tr><td><code>GR</code></td><td><code>rotate</code></td><td>TagIncrement, Copies</td><td>Generates cylindrical rotational copies about the Z axis.</td></tr>
+  <tr><td><code>GS</code></td><td><code>scale</code></td><td>Conversion, Unused, Scale</td><td>Scales all structure coordinates and radii (1 = ft&rarr;m, 2 = in&rarr;m, 0 = factor).</td></tr>
+  <tr><td><code>GX</code></td><td><code>reflect</code></td><td>TagIncrement, Axes</td><td>Reflects structure across coordinate planes (<code>100</code>=X, <code>010</code>=Y, <code>001</code>=Z) and enables symmetry.</td></tr>
+  <tr><td><code>GF</code></td><td><code>greenFunctionRead</code></td><td>PrintFlag</td><td>Reads a precomputed Numerical Green's Function file (must precede geometry).</td></tr>
+  <tr><td><code>GP</code></td><td><code>suppressGeometryPrint</code></td><td>—</td><td>NEC-81 extension: suppresses the printed segmentation table.</td></tr>
+  <tr><td><code>GE</code></td><td><code>geometryEnd</code></td><td>GroundFlag, PlotFlag</td><td>Ends geometry input, builds connectivity, and checks junctions.</td></tr>
+  <tr><td><code>FR</code></td><td><code>frequency</code></td><td>StepType, Count, Unused1, Unused2, Start_MHz, Step_MHz_orRatio</td><td>Sets single frequency or linear (0) / multiplicative (1) frequency sweep.</td></tr>
+  <tr><td><code>EX</code></td><td><code>excitation</code></td><td>Type, Tag, Segment, Flags, Real_V, Imag_V, Param3..6</td><td>Voltage source (0), incident plane wave (1–3), elementary current source (4), or voltage discontinuity (5).</td></tr>
+  <tr><td><code>GN</code></td><td><code>ground</code></td><td>Type, Radials, Unused1, Unused2, RelativePermittivity, Conductivity_Spm, RadialLength_m, RadialRadius_m</td><td>Free space (-1), reflection-coefficient ground (0), perfect ground (1), or Sommerfeld/Norton ground (2).</td></tr>
+  <tr><td><code>GD</code></td><td><code>secondMedium</code></td><td>Unused1..4, RelativePermittivity, Conductivity_Spm, BoundaryDistance_m, Depth_m</td><td>Cliff or radial ground screen second medium parameters for far fields.</td></tr>
+  <tr><td><code>LD</code></td><td><code>load</code></td><td>Type, Tag, FromSegment, ThroughSegment, Resistance_Ohm, Inductance_H, Capacitance_F</td><td>Series/parallel RLC (0–3), fixed Z (4), or finite wire conductivity/permeability (5).</td></tr>
+  <tr><td><code>NT</code></td><td><code>network</code></td><td>Tag1, Segment1, Tag2, Segment2, Y11Real_S, Y11Imag_S, Y12Real_S, Y12Imag_S, Y22Real_S, Y22Imag_S</td><td>Connects a two-port short-circuit admittance network between two segments.</td></tr>
+  <tr><td><code>TL</code></td><td><code>transmissionLine</code></td><td>Tag1, Segment1, Tag2, Segment2, Z0_Ohm, Length_m, Y1Real_S, Y1Imag_S, Y2Real_S, Y2Imag_S</td><td>Connects a transmission line (negative <code>Z0</code> crosses line; <code>Length=0</code> uses straight-line distance).</td></tr>
+  <tr><td><code>CP</code></td><td><code>coupling</code></td><td>Tag1, Segment1, Tag2, Segment2</td><td>Computes maximum coupling between up to 5 specified segments.</td></tr>
+  <tr><td><code>EK</code></td><td><code>extendedKernel</code></td><td>Option</td><td>Enables (0) or disables (-1) the extended thin-wire kernel.</td></tr>
+  <tr><td><code>KH</code></td><td><code>interactionRange</code></td><td>Unused1..4, Range</td><td>Sets the distance threshold (in wavelengths) for approximate matrix integration.</td></tr>
+  <tr><td><code>PT</code></td><td><code>currentPrint</code></td><td>Control, Tag, FromSegment, ThroughSegment</td><td>Controls printed wire current tables or receiving pattern normalization.</td></tr>
+  <tr><td><code>PQ</code></td><td><code>chargePrint</code></td><td>Control, Tag, FromSegment, ThroughSegment</td><td>Controls printed segment charge density tables.</td></tr>
+  <tr><td><code>PL</code></td><td><code>plotFlags</code></td><td>Flag1, Flag2, Flag3, Flag4</td><td>Writes auxiliary plot data to <code>fort.8</code>.</td></tr>
+  <tr><td><code>NE</code></td><td><code>nearElectricField</code></td><td>Coordinates, CountX, CountY, CountZ, StartX_m, StartY_m, StartZ_m, StepX_m, StepY_m, StepZ_m</td><td>Evaluates near electric field (Ex, Ey, Ez) on a rectangular (0) or spherical (1) grid.</td></tr>
+  <tr><td><code>NH</code></td><td><code>nearMagneticField</code></td><td>Coordinates, CountX, CountY, CountZ, StartX_m, StartY_m, StartZ_m, StepX_m, StepY_m, StepZ_m</td><td>Evaluates near magnetic field (Hx, Hy, Hz) on a rectangular (0) or spherical (1) grid.</td></tr>
+  <tr><td><code>RP</code></td><td><code>radiationPattern</code></td><td>Mode, ThetaCount, PhiCount, Flags, StartTheta_deg, StartPhi_deg, ThetaStep_deg, PhiStep_deg, Range_m, Normalization_dB</td><td>Evaluates far-zone radiation pattern, power/directive gain, polarization, and axial ratio.</td></tr>
+  <tr><td><code>WG</code></td><td><code>greenFunctionWrite</code></td><td>—</td><td>Writes factored N.G.F. matrices to disk for reuse in subsequent runs.</td></tr>
+  <tr><td><code>XQ</code></td><td><code>execute</code></td><td>Option</td><td>Executes matrix fill, solve, and requested field calculations.</td></tr>
+  <tr><td><code>NX</code></td><td><code>nextStructure</code></td><td>—</td><td>Resets structure state to process another deck in the same input stream.</td></tr>
+  <tr><td><code>EN</code></td><td><code>end</code></td><td>—</td><td>Terminates execution and prints total run time.</td></tr>
+</table>
+
+<h2>NSMA WG16.99.050 Format</h2>
+
+<p>Many manufacturers provide antenna patterns in
+<a href="https://www.nsma.org/recommendations/"> Antenna Systems – Standard
+Format for Digitized Antenna Patterns WG16.99.050</a> format.  Link budget
+simulators designed for NSMA format files often cannot use NEC output.  This
+version of NEC-81 provides the <tt>-a</tt> or GUI option to write output in
+an NSMA format <tt>.adf</tt> file.  An example of a NEC-81 generated adf can
+be seen at <a href=https://udel.edu/~mm/nsma/>NSMA viewer</a>.
+
+<h2>Software Architecture</h2>
+
+<p>
+  The solver core was translated from the 15 Fortran source files of NEC-81
+  v2.2 into modular Python files sharing a unified <code>NECState</code>
+  dataclass in place of Fortran <code>COMMON</code> blocks:
+</p>
+
+<ul>
+  <li><strong>Core Solver &amp; State:</strong> <code>nec_state.py</code>, <code>mainsa.py</code>, <code>main2.py</code></li>
+  <li><strong>Geometry &amp; Connectivity:</strong> <code>datagn.py</code>, <code>datagn2.py</code></li>
+  <li><strong>MoM Matrix Fill, Kernels &amp; Ground:</strong> <code>cmset.py</code>, <code>eksc.py</code>, <code>etmns.py</code>, <code>hintg.py</code>, <code>intrp.py</code>, <code>load.py</code></li>
+  <li><strong>Symmetry, N.G.F. &amp; Linear Solvers:</strong> <code>fbngf.py</code>, <code>factr.py</code>, <code>factrs.py</code>, <code>netwk.py</code>, <code>couple.py</code></li>
+  <li><strong>Near &amp; Far Field Evaluation:</strong> <code>nfpat.py</code>, <code>rdpat.py</code></li>
+  <li><strong>Modern Frontend &amp; Visualization:</strong> <code>nec81.py</code>, <code>config.py</code>, <code>deck.py</code>, <code>plots3d.py</code>, <code>gui.py</code></li>
+</ul>
+
+<div class="note">
+  <strong>Dependencies:</strong> Only <code>numpy</code> is required to run the
+  NEC-81 solver engine. <code>matplotlib</code> is required for 2D/3D plots,
+  and <code>PySide6</code> is required only when launching the GUI.
+</div>
+
+<!-- Default Statcounter code for NEC-81
+https://udel.edu/~mm/nec81/ -->
+<script type="text/javascript">
+var sc_project=13366742; 
+var sc_invisible=1; 
+var sc_security="bf09414a"; 
+</script>
+<script type="text/javascript"
+src="https://www.statcounter.com/counter/counter.js"
+async></script>
+<noscript><div class="statcounter"><a title="Web Analytics"
+href="https://statcounter.com/" target="_blank"><img
+class="statcounter"
+src="https://c.statcounter.com/13366742/0/bf09414a/1/"
+alt="Web Analytics"
+referrerPolicy="no-referrer-when-downgrade"></a></div></noscript>
+<!-- End of Statcounter Code -->
+
+</body>
+</html>
+
