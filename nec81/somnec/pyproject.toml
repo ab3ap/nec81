@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "somnec"
+version = "2.2.0"
+description = "Sommerfeld-Norton ground interpolation grid generator for NEC-2 / NEC-81"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+]
+
+[project.scripts]
+somnec = "somnec.somnec:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["somnec*"]
+

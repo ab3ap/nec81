@@ -30,8 +30,10 @@ full = [
 
 [project.scripts]
 nec81 = "nec81.nec81:main"
-mainsa = "nec81.mainsa:main"
+mainsa = "nec81.mainsa:run_nec"
+somnec = "nec81.somnec.somnec:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["nec81*"]
 
