@@ -12,6 +12,10 @@ LOADMX = 100
 NSMAX = 50
 NETMX = 100
 NORMF = 200
+# NEC-81 sets NDIMN=100 in NETWK but declares /NETWKC/ CMN(30,30) etc.
+# The arrays are sized to NDIMN here so that up to NDIMN-1 network ports work.
+NDIMN = 100
+NDIMNP = NDIMN + 1
 CVEL = 299.8
 TA = 1.745329252e-02
 
@@ -151,14 +155,18 @@ class NECState:
     ntyp: npy.ndarray = field(default_factory=lambda: npy.zeros(NETMX, dtype=npy.int32))
 
     # /NETWKC/
-    cmn: npy.ndarray = field(default_factory=lambda: npy.zeros((30, 30), dtype=npy.complex64))
-    rhnt: npy.ndarray = field(default_factory=lambda: npy.zeros(30, dtype=npy.complex64))
-    ipnt: npy.ndarray = field(default_factory=lambda: npy.zeros(30, dtype=npy.int32))
-    nteqa: npy.ndarray = field(default_factory=lambda: npy.zeros(30, dtype=npy.int32))
-    ntsca: npy.ndarray = field(default_factory=lambda: npy.zeros(30, dtype=npy.int32))
-    vsrc: npy.ndarray = field(default_factory=lambda: npy.zeros(30, dtype=npy.complex128))
-    rhnx: npy.ndarray = field(default_factory=lambda: npy.zeros(30, dtype=npy.complex128))
+    cmn: npy.ndarray = field(default_factory=lambda: npy.zeros((NDIMN, NDIMN), dtype=npy.complex64))
+    rhnt: npy.ndarray = field(default_factory=lambda: npy.zeros(NDIMN, dtype=npy.complex64))
+    ipnt: npy.ndarray = field(default_factory=lambda: npy.zeros(NDIMNP, dtype=npy.int32))
+    nteqa: npy.ndarray = field(default_factory=lambda: npy.zeros(NDIMNP, dtype=npy.int32))
+    ntsca: npy.ndarray = field(default_factory=lambda: npy.zeros(NDIMNP, dtype=npy.int32))
+    vsrc: npy.ndarray = field(default_factory=lambda: npy.zeros(NDIMNP, dtype=npy.complex128))
+    rhnx: npy.ndarray = field(default_factory=lambda: npy.zeros(NDIMN, dtype=npy.complex128))
     namprt: int = 0
+    # NTEQ/NTSC are local to NETWK in Fortran but keep their values between
+    # calls (static storage); later excitations with NTSOL=1 rely on them.
+    nteq_net: int = 0
+    ntsc_net: int = 0
 
     # /FPAT/
     nth: int = 0

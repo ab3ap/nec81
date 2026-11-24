@@ -218,7 +218,8 @@ def qdsrc(state: NECState, e, zarray, v: complex, x, y, z, bi, salp, t1x, t1y, t
             e[i] -= (etk * state.ax[jx] + ets * state.bx[jx] + etc * state.cx[jx]) * curd
 
         if state.m != 0:
-            ij, i1 = ld, state.n - 1
+            # Fortran: I1=N then I1=I1+1 before each use -> 0-based N, N+1.
+            ij, i1 = ld, state.n
             for _ in range(state.m):
                 ij -= 1
                 hsfld(state, x[ij], y[ij], z[ij], 0.0)

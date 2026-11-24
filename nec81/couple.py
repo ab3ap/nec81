@@ -8,12 +8,14 @@ def couple(state: NECState, iw, cur: npy.ndarray, wlam: float, ld: int, ld3: int
     """Computes maximum coupling between pairs of segments."""
     if state.nsant != 1 or state.nvqd != 0:
         return
+    if state.icoup >= state.ncoup:
+        return
     j = isegno(state, int(state.nctag[state.icoup]), int(state.ncseg[state.icoup]), itag)
-    if j != int(state.isant):
+    if j != int(state.isant[0]):
         return
 
     state.icoup += 1
-    zin = state.vsant
+    zin = complex(state.vsant[0])
     state.y11a[state.icoup - 1] = complex(cur[j - 1]) * wlam / zin
     l1 = (state.icoup - 1) * (state.ncoup - 1)
     for i in range(1, state.ncoup + 1):
@@ -46,8 +48,9 @@ def couple(state: NECState, iw, cur: npy.ndarray, wlam: float, ld: int, ld3: int
             y12 = 0.5 * (state.y12a[j1] + state.y12a[j2])
             yin = y12 * y12
             dbc = abs(yin)
-            c = dbc / (2.0 * y11.real * y22.real - yin.real)
-            if c < 0.0 or c > 1.0:
+            den = 2.0 * y11.real * y22.real - yin.real
+            c = dbc / den if den != 0.0 else -1.0
+            if c < 0.0 or c > 1.0 or dbc == 0.0:
                 iw.write(
                     f" {itt1:4d} {its1:4d} {isg1:5d}   {itt2:4d} {its2:4d} {isg2:5d}  "
                     f"**ERROR** COUPLING IS NOT BETWEEN 0 AND 1. (={c:12.5E})\n"

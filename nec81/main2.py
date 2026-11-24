@@ -69,7 +69,7 @@ def gwave(state: NECState):
     x2 = rv * spp2 * xr2
     x4 = state.u2 * t1 * omr * f * xr2
     x5 = t3 * (1.0 - 3.0 * cppp2) * xr1
-    x6 = t4 * (1.0 - 3.0 * spp2) * (1.0 - state.u2 * (1.0 + rv) - state.u2 * omr * f) * xr2
+    x6 = t4 * (1.0 - 3.0 * cpp2) * (1.0 - state.u2 * (1.0 + rv) - state.u2 * omr * f) * xr2
     x7 = (
         state.u2
         * cpp2

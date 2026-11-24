@@ -1,6 +1,6 @@
 import math
 import numpy as npy
-from .nec_state import NECState
+from .nec_state import NECState, NDIMN, NDIMNP
 from .main2 import tbf
 from .factr import factr, solve, solves, ltsolv
 
@@ -38,7 +38,7 @@ def netwk(
     iresrv: int,
 ):
     """Solves for structure currents including non-radiating networks."""
-    ndimn, ndimnp, tp = 100, 101, 6.283185308
+    ndimn, ndimnp, tp = NDIMN, NDIMNP, 6.283185308
     cmb = cm[ib11 - 1 :]
     cmc = cm[ic11 - 1 :]
     cmd = cm[id11 - 1 :]
@@ -47,24 +47,24 @@ def netwk(
     state.pin = 0.0
     state.pnls = 0.0
     neqt = state.neq + state.neq2
-    ntsc = 0
-    nteq = 0
+    # Fortran keeps NTEQ/NTSC between calls; they are needed when NTSOL=1.
+    ntsc = state.ntsc_net
+    nteq = state.nteq_net
 
     if state.ntsol == 0:
         if state.masym != 0 and state.namprt == 0:
             irow1 = 0
+            segs = []
             for i in range(state.nonet):
-                for nseg in (int(state.iseg1[i]), int(state.iseg2[i])):
-                    if nseg not in state.ipnt[:irow1]:
-                        state.ipnt[irow1] = nseg
-                        irow1 += 1
-            for i in range(state.nsant):
-                nseg = int(state.isant[i])
+                segs += [int(state.iseg1[i]), int(state.iseg2[i])]
+            segs += [int(state.isant[i]) for i in range(state.nsant)]
+            for nseg in segs:
                 if nseg not in state.ipnt[:irow1]:
+                    if irow1 >= ndimn:
+                        iw.write(" ERROR - - NETWORK ARRAY DIMENSIONS TOO SMALL\n")
+                        raise RuntimeError("ERROR - - NETWORK ARRAY DIMENSIONS TOO SMALL")
                     state.ipnt[irow1] = nseg
                     irow1 += 1
-            if irow1 >= ndimnp:
-                raise RuntimeError("ERROR - - NETWORK ARRAY DIMENSIONS TOO SMALL")
             if irow1 >= 2:
                 for i in range(irow1):
                     isc1 = int(state.ipnt[i]) - 1
@@ -135,6 +135,7 @@ def netwk(
                 isc1, irow1 = map_port(nseg1)
                 isc2, irow2 = map_port(nseg2)
                 if ntsc + nteq >= ndimnp:
+                    iw.write(" ERROR - - NETWORK ARRAY DIMENSIONS TOO SMALL\n")
                     raise RuntimeError("ERROR - - NETWORK ARRAY DIMENSIONS TOO SMALL")
 
                 if isc1 == 0:
@@ -159,7 +160,8 @@ def netwk(
                 for j in range(nteq):
                     state.cmn[i, j] += rhs[int(state.nteqa[j]) - 1]
 
-            factr(state.cmn, scratc, nteq, 30, state.ipnt, ld2)
+            factr(state.cmn, scratc, nteq, ndimn, state.ipnt, ld2)
+            state.nteq_net, state.ntsc_net = nteq, ntsc
     if state.nonet != 0:
         rhs[:neqt] = einc[:neqt]
         solgf(state, cm, cmb, cmc, cmd, rhs, scratc, state.np, state.n1, state.n, state.mp, state.m1, state.m, state.neq, state.neq2, neqz2, ip, ld2, ld3, iresrv)
@@ -167,7 +169,7 @@ def netwk(
         for i in range(nteq):
             state.rhnt[i] = state.rhnx[i] + rhs[int(state.nteqa[i]) - 1]
 
-        solve(state.cmn, state.rhnt, scratc, nteq, 30, state.ipnt, ld2)
+        solve(state.cmn, state.rhnt, scratc, nteq, ndimn, state.ipnt, ld2)
 
         for i in range(nteq):
             einc[int(state.nteqa[i]) - 1] -= state.rhnt[i]
@@ -204,6 +206,8 @@ def netwk(
         solgf(state, cm, cmb, cmc, cmd, einc, scratc, state.np, state.n1, state.n, state.mp, state.m1, state.m, state.neq, state.neq2, neqz2, ip, ld2, ld3, iresrv)
         cabc(state, einc, bi, t1x, t1y, t1z, t2x, t2y, t2z, air, aii, bir, bii, cir, cii, icon1, icon2, ld, ld3)
         ntsc = 0
+        nteq = 0
+        state.nteq_net = state.ntsc_net = 0
 
     if state.nsant + state.nvqd == 0:
         return

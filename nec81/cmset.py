@@ -450,15 +450,18 @@ def cmngf(
                 tbf(state, t1x, bi, icon1, icon2, 1, j)
                 jsx = state.jsno
                 state.jsno = 1
+                # Fortran keeps the COMMON arrays and only rewrites element 1
+                # (JCO(1)=NEQS+I, AX(1)=AX(IX), ...).  Replacing the arrays by
+                # scalars made CMWW/CMWS fail on the next index.
                 jco_saved = state.jco[:jsx].copy()
                 ax_saved = state.ax[:jsx].copy()
                 bx_saved = state.bx[:jsx].copy()
                 cx_saved = state.cx[:jsx].copy()
-                state.jco = neqs + i
+                state.jco[0] = neqs + i
 
                 for ix_i in range(jsx):
                     ir_v = int(jco_saved[ix_i])
-                    state.ax, state.bx, state.cx = ax_saved[ix_i], bx_saved[ix_i], cx_saved[ix_i]
+                    state.ax[0], state.bx[0], state.cx[0] = ax_saved[ix_i], bx_saved[ix_i], cx_saved[ix_i]
                     if ir_v > state.n1 or iconx[ir_v-1] != 0:
                         continue
                     if i1 <= in2:
@@ -468,7 +471,7 @@ def cmngf(
                     if state.nlodf != 0:
                         jx = ir_v - isv
                         if 1 <= jx <= it:
-                            cb[jx-1, neqs+i-1] -= (state.ax + state.cx)*zarray[ir_v-1]
+                            cb[jx-1, neqs+i-1] -= (state.ax[0] + state.cx[0])*zarray[ir_v-1]
 
         if state.npcon != 0:
             jss = neqp

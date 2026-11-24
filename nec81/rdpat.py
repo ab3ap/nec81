@@ -139,7 +139,7 @@ def rdpat(state: NECState, cur, gain, air, aii, bir, bii, cir, cii, si, cab, sab
                 axrat = math.sqrt(eminr2 / emajr2)
                 tilta *= TD
                 isens = hpol[0] if axrat <= 1.0e-5 \
-                    else (hpol[1] if dfaz > 0.0 else hpol[2])
+                    else (hpol[2] if dfaz > 0.0 else hpol[1])
 
             gnmj, gnmn = db10(gcon * emajr2), db10(gcon * eminr2)
             gnv, gnh = db10(gcon * ethm2), db10(gcon * ephm2)
@@ -159,7 +159,7 @@ def rdpat(state: NECState, cur, gain, air, aii, bir, bii, cir, cii, si, cab, sab
                 tmp3 = tha if kth == 1 else tha - tmp2_dth
                 tmp4 = tha if kth == state.nth else tha + tmp2_dth
                 da = abs(tmp1_dph * (math.cos(tmp3) - math.cos(tmp4)))
-                if kth in (1, state.nph):
+                if kph == 1 or kph == state.nph:
                     da *= 0.5
                 pint += gcop * (ethm2 + ephm2) * da
                 if state.iavp == 2:

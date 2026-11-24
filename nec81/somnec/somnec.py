@@ -23,7 +23,7 @@ class SomnecGridGenerator:
 
         self.dxa = np.array((0.02, 0.05, 0.1), dtype=np.float64)
         self.dya = np.array(
-            (0.1745329252, 0.0872654626, 0.1745329252), dtype=np.float64
+            (0.1745329252, 0.0872664626, 0.1745329252), dtype=np.float64
         )
         self.xsa = np.array((0.0, 0.2, 0.2), dtype=np.float64)
         self.ysa = np.array((0.0, 0.0, 0.3490658504), dtype=np.float64)

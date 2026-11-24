@@ -147,6 +147,11 @@ def run_nec(
         state.kcom = 0
         ifrtmw = 0
         ifrtmp = 0
+        # IFRTMW/IFRTMP must survive between executions: once set, the
+        # unscaled geometry in XTEMP... is kept and never re-copied from the
+        # already frequency-scaled X, Y, Z arrays.
+        state.ifrtmw = 0
+        state.ifrtmp = 0
 
         while True:
             state.kcom = min(state.kcom + 1, 5)
@@ -186,7 +191,9 @@ def run_nec(
         )
         neq = state.n + 2*state.m
         npeq = state.np + 2*state.mp
-        needed = max(1, neq*npeq)
+        # Symmetric sub-matrix views A(KA) with leading dimension NEQ reach
+        # up to NEQ elements past NEQ*NPEQ, so keep that much slack.
+        needed = max(1, neq*npeq + neq + npeq)
         # If Numerical Green's Function is used, include coupled submatrices:
         if state.imat != 0 or state.n1 > 0 or state.m1 > 0:
             neq_new = (state.n - state.n1) + 2*(state.m - state.m1) + state.nscon + 2*state.npcon
@@ -561,7 +568,7 @@ def run_nec(
             if not trigger_exec:
                 continue
 
-            _execute_frequency_sweep(
+            zpnorm, ypnorm, fnorm = _execute_frequency_sweep(
                 state, state.cm, zarray, x, y, z, bi, salp,
                 t1x, t1y, t1z, t2x, t2y, t2z,
                 icon1, icon2, iconx, itag, ip, ix, cur, rhs, gain, scratc,
@@ -609,13 +616,15 @@ def _execute_frequency_sweep(
     fmhz1 = state.fmhz
 
     if igo <= 1:
-        if state.n != 0 and ifrtmw == 0:
+        if state.n != 0 and getattr(state, "ifrtmw", ifrtmw) == 0:
+            state.ifrtmw = 1
             xtemp[: state.n] = x[: state.n]
             ytemp[: state.n] = y[: state.n]
             ztemp[: state.n] = z[: state.n]
             sitemp[: state.n] = t1x[: state.n]
             bitemp[: state.n] = bi[: state.n]
-        if state.m != 0 and ifrtmp == 0:
+        if state.m != 0 and getattr(state, "ifrtmp", ifrtmp) == 0:
+            state.ifrtmp = 1
             start_m = LD - state.m
             xtemp[start_m:LD] = x[start_m:LD]
             ytemp[start_m:LD] = y[start_m:LD]
@@ -670,9 +679,9 @@ def _execute_frequency_sweep(
             if iflow == 12:
                 gfout(state, cm, zarray, x, y, z, t1x, bi, t1y, t1z, salp,
                 icon1, icon2, itag, ip, iw, igfl, LD, LD2, state.iresrv)
-                return
+                return zpnorm, ypnorm, fnorm
 
-        _solve_and_output_fields(
+        zpnorm = _solve_and_output_fields(
             state, cm, ib11, ic11, id11, zarray, x, y, z, bi, salp, t1x,
             t1y, t1z, t2x, t2y, t2z, icon1, icon2, itag, ip, cur, rhs, gain,
             scratc, air, aii, bir, bii, cir, cii, fnorm, mhz, nfrq, iflow,
@@ -697,7 +706,7 @@ def _execute_frequency_sweep(
             state.ifar = -1
         if nfrq == 1:
             iw.write("\n"*5)
-            return
+            return zpnorm, ypnorm, fnorm
 
         mhz += 1
         if mhz <= nfrq:
@@ -705,7 +714,7 @@ def _execute_frequency_sweep(
             continue
 
         _write_sweep_tables(state, fnorm, nfrq, ifrq, delfrq, iped, zpnorm, ypnorm, iw)
-        return
+        return zpnorm, ypnorm, fnorm
 
 
 def _setup_ground_and_factor(
@@ -860,7 +869,8 @@ def _setup_ground_and_factor(
         tim2 = second()
         tim = tim2 - tim1
         facgf(
-            state, cm, ib11, ic11, id11, ix11, scratc,
+            state, cm, cm[ib11 - 1:], cm[ic11 - 1:], cm[id11 - 1:],
+            cm[ix11 - 1:], scratc,
             ip, ix, state.np, state.n1, state.mp, state.m1,
             state.neq, state.neq2, LD2, state.iresrv
         )
@@ -925,7 +935,7 @@ def _solve_and_output_fields(
         if state.nonet != 0 and inc <= 1 and state.namprt == 0:
             iw.write("\n\n\n                                            - - - NETWORK DATA - - -\n")
             itmp3 = 0
-            itmp1 = int(state.ntyp)
+            itmp1 = int(state.ntyp[0])
             for _ in range(2):
                 if itmp1 == 3:
                     itmp1 = 2
@@ -1096,7 +1106,7 @@ def _solve_and_output_fields(
                             isave = i + 1
                         if iptflg != 3 and iptflg < 9:
                             iw.write(f"          {xpr1:7.2f}   {xpr2:7.2f}    {cmag:11.4E}   {ph:7.2f}    {i + 1:5d}\n")
-                        elif iptflg == 8:
+                        if iptflg == 8:
                             with open("fort.8", "a") as f8:
                                 f8.write(f" {xpr1} {xpr2} {cmag} {ph} {i + 1}\n")
                         elif iptflg == 9:
@@ -1187,7 +1197,7 @@ def _solve_and_output_fields(
 
         skip_near_far = (iflow == 7 and 0 < state.ixtyp < 4)
         if iflow == 7 and not skip_near_far:
-            return
+            return zpnorm
 
         if not skip_near_far:
             if state.near != -1:
@@ -1195,13 +1205,13 @@ def _solve_and_output_fields(
                 if mhz == nfrq:
                     state.near = -1
                 if nfrq == 1:
-                    return
+                    return zpnorm
             if state.ifar != -1:
                 state.pinr, state.pnlr = state.pin, state.pnls
                 rdpat(state, cur, gain, air, aii, bir, bii, cir, cii, t1x, t1y, t1z, bi, salp, x, y, z, LD, LD3, LD4, iw)
 
         if state.ixtyp == 0 or state.ixtyp >= 4:
-            return
+            return zpnorm
         nthic += 1
         inc += 1
         xpr1 += xpr4
@@ -1221,6 +1231,8 @@ def _solve_and_output_fields(
             if nthi*nphi > NORMF:
                 iw.write("\n\n\n    RECEIVING PATTERN STORAGE TOO SMALL,ARRAY TRUNCATED\n")
             tmp1 = float(npy.max(fnorm[:itmp1]))
+            if tmp1 <= 0.0:
+                tmp1 = 1.0
             iw.write(
                 f"\n\n\n                                - - - NORMALIZED RECEIVING PATTERN - - -\n"
                 f"                                         NORMALIZATION FACTOR={tmp1:11.4E}\n"
@@ -1231,17 +1243,18 @@ def _solve_and_output_fields(
                 f"                     THETA      PHI         -  PATTERN  -\n"
                 f"                     (DEG)     (DEG)        DB        MAGNITUDE\n\n"
             )
-            for _ in range(nphi):
+            for jph in range(nphi):
                 for i in range(nthi):
-                    if i >= itmp1:
+                    itmp3 = i + nthi*jph
+                    if itmp3 >= itmp1:
                         break
-                    tmp2 = fnorm[i]/tmp1
+                    tmp2 = fnorm[itmp3]/tmp1
                     iw.write(f"                    {xpr1:7.2f}   {xpr2:7.2f}    {db20(tmp2):7.2f}    {tmp2:11.4E}\n")
                     xpr1 += xpr4
                 xpr1 = thetis
                 xpr2 += xpr5
             xpr2 = phiss
-        return
+        return zpnorm
 
 
 def _write_sweep_tables(state, fnorm, nfrq, ifrq, delfrq, iped, zpnorm, ypnorm, iw):
@@ -1286,6 +1299,7 @@ def _write_sweep_tables(state, fnorm, nfrq, ifrq, delfrq, iped, zpnorm, ypnorm, 
         denom = r_val*r_val + x_val*x_val
         ytmp2, ytmp3, ytmp4, ytmp5 = r_val/denom, -x_val/denom, 1.0/z_mag, -z_ph
         yntmp2, yntmp3, yntmp4 = ytmp2/ypnorm, ytmp3/ypnorm, ytmp4/ypnorm
+        yntmp5 = ytmp5
         swra = math.sqrt((yntmp2 + 1.0)**2 + yntmp3**2)
         swrb = math.sqrt((yntmp2 - 1.0)**2 + yntmp3**2)
         swr = (swra + swrb)/(swra - swrb) if swra != swrb else 999.99

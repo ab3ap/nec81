@@ -140,12 +140,26 @@ def fblock(state: NECState, nrow: int, ncol: int, imax: int, irngf: int, ipsym: 
                     state.ssx[i, j + kk] = state.ssx[i + kk, j] = deter
                     state.ssx[i + kk, j + kk] = -deter
             kk *= 2
+def _ngf_path(state: NECState, igfl: int, what: str) -> str:
+    """N.G.F. file name: state.ngf_path if set, else ask on a terminal, else
+    the Fortran default unit name TAPE.<IGFL> -> fort.<IGFL>."""
+    path = getattr(state, "ngf_path", None)
+    if path:
+        return path
+    import sys
+    default = f"fort.{igfl}"
+    if sys.stdin is not None and sys.stdin.isatty():
+        entered = input(f" OPEN UNIT {igfl:2d} FOR N.G.F. {what} FILE [{default}]: ").strip()
+        return entered or default
+    return default
+
+
 def gfout(state: NECState, cm, zarray, x, y, z, si, bi, alp, bet, salp, icon1, icon2, itag, ip, iw, igfl: int, ld: int, ld2: int, iresrv: int):
     """Writes Numerical Green's Function (N.G.F.) file."""
     neq = state.n + 2 * state.m
     npeq = state.np + 2 * state.mp
     nop = neq // npeq
-    ngf_path = input(f" OPEN UNIT {igfl:2d} FOR N.G.F. OUTPUT FILE: ").strip()
+    ngf_path = _ngf_path(state, igfl, "OUTPUT")
 
     with open(ngf_path, "wb") as f_ngf:
         npy.array([state.n, state.np, state.m, state.mp], dtype=npy.int32).tofile(f_ngf)

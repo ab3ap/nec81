@@ -658,7 +658,7 @@ def reflc(
                 for i in range(state.n2 - 1, state.n):
                     nx = i + state.n - state.n1
                     e1, e2 = z[i], z2[i]
-                    if (abs(e1) + abs(e2)) <= 1.0e-5 and (e1 * e2) < -1.0e-6:
+                    if (abs(e1) + abs(e2)) <= 1.0e-5 or (e1 * e2) < -1.0e-6:
                         raise RuntimeError(f" GEOMETRY DATA ERROR--SEGMENT{i + 1:5d} LIES IN PLANE OF SYMMETRY")
                     x[nx], y[nx], z[nx] = x[i], y[i], -e1
                     x2[nx], y2[nx], z2[nx] = x2[i], y2[i], -e2
@@ -686,7 +686,7 @@ def reflc(
                 for i in range(state.n2 - 1, state.n):
                     nx = i + state.n - state.n1
                     e1, e2 = y[i], y2[i]
-                    if (abs(e1) + abs(e2)) <= 1.0e-5 and (e1 * e2) < -1.0e-6:
+                    if (abs(e1) + abs(e2)) <= 1.0e-5 or (e1 * e2) < -1.0e-6:
                         raise RuntimeError(f" GEOMETRY DATA ERROR--SEGMENT{i + 1:5d} LIES IN PLANE OF SYMMETRY")
                     x[nx], y[nx], z[nx] = x[i], -e1, z[i]
                     x2[nx], y2[nx], z2[nx] = x2[i], -e2, z2[i]
@@ -714,7 +714,7 @@ def reflc(
                 for i in range(state.n2 - 1, state.n):
                     nx = i + state.n - state.n1
                     e1, e2 = x[i], x2[i]
-                    if (abs(e1) + abs(e2)) <= 1.0e-5 and (e1 * e2) < -1.0e-6:
+                    if (abs(e1) + abs(e2)) <= 1.0e-5 or (e1 * e2) < -1.0e-6:
                         raise RuntimeError(f" GEOMETRY DATA ERROR--SEGMENT{i + 1:5d} LIES IN PLANE OF SYMMETRY")
                     x[nx], y[nx], z[nx] = -e1, y[i], z[i]
                     x2[nx], y2[nx], z2[nx] = -e2, y2[i], z2[i]
@@ -792,7 +792,8 @@ def gfil(
     iresrv: int,
 ):
     """Reads Numerical Green's Function (N.G.F.) binary file."""
-    ngf_path = input(f" OPEN UNIT {igfl:2d} FOR N.G.F. INPUT  FILE: ").strip()
+    from .fbngf import _ngf_path
+    ngf_path = _ngf_path(state, igfl, "INPUT ")
     with open(ngf_path, "rb") as f_ngf:
         state.n1, state.np, state.m1, state.mp = map(int, npy.fromfile(f_ngf, dtype=npy.int32, count=4))
         state.wlam, state.fmhz = map(float, npy.fromfile(f_ngf, dtype=npy.float32, count=2))

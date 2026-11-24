@@ -31,7 +31,10 @@ def intrp(state: NECState, x: float, y: float):
                 recompute = False
 
     if recompute:
-        if x <= float(state.xsa[0]):
+        # Fortran: IF (X.GT.XS2) where XS2 is EQUIVALENCEd to XSA(2), the
+        # start of grid 2 (R=0.2 wavelength).  Using XSA(1)=0 sent every
+        # near-ground point to grids 2/3 and extrapolated them.
+        if x <= float(state.xsa[1]):
             igr = 1
         else:
             igr = 3 if y > float(state.ysa[2]) else 2

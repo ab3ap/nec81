@@ -281,15 +281,15 @@ def pcint(state: NECState, xi: float, yi: float, zi: float, cabi: float, sabi: f
             f2 = (s1 * s1 + s2 * s2) * tpi
             f1 = s1 / f2 - (g1 - g2 - g3 + g4) * fcon
             f2 = s2 / f2 - (g1 + g2 - g3 - g4) * fcon
-            e += exk * g1
-            e += exk * g2
-            e += exk * g3
-            e += exk * g4
-            e += exs * g1
-            e += exs * g2
-            e += exs * g3
-            e += exs * g4
-            e += exk * f1 + exs * f2
+            e[0] += exk * g1
+            e[1] += exk * g2
+            e[2] += exk * g3
+            e[3] += exk * g4
+            e[4] += exs * g1
+            e[5] += exs * g2
+            e[6] += exs * g3
+            e[7] += exs * g4
+            e[8] += exk * f1 + exs * f2
 
     state.xj, state.yj, state.zj, state.s = xxj, xyj, xzj, xs
     return e
@@ -444,6 +444,10 @@ def _set_ext_wire_flags(state: NECState, j: int, t1y, t1z, salp, bi, icon1, icon
     ipr = int(icon1[j_idx])
     if ipr == 0:
         state.ind1 = 1
+    elif ipr > 10000:
+        # End connected to a surface patch: Fortran indexes ICON with
+        # 10000+patch here (out of bounds).  Use the thin-wire end term.
+        state.ind1 = 2
     else:
         ok = False
         if ipr < 0:
@@ -461,6 +465,10 @@ def _set_ext_wire_flags(state: NECState, j: int, t1y, t1z, salp, bi, icon1, icon
     ipr = int(icon2[j_idx])
     if ipr == 0:
         state.ind2 = 1
+    elif ipr > 10000:
+        # End connected to a surface patch: Fortran indexes ICON with
+        # 10000+patch here (out of bounds).  Use the thin-wire end term.
+        state.ind2 = 2
     else:
         ok = False
         if ipr < 0:
