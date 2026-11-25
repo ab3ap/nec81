@@ -1,6 +1,6 @@
 import math
 import numpy as npy
-from .nec_state import NECState
+from .necState import NECState
 from .main2 import tbf
 from .factr import factr, solve, solves, ltsolv
 
@@ -251,62 +251,71 @@ def netwk(
         state.pin += pwr
         if state.namprt == 0:
             iw.write(f" {itag[isc_idx]:5d} *{isc1:4d}{vlt.real:12.5E}{vlt.imag:12.5E}{cux.real:12.5E}{cux.imag:12.5E}{state.zped.real:12.5E}{state.zped.imag:12.5E}{ymit.real:12.5E}{ymit.imag:12.5E}{pwr:12.5E}\n")
-def cabc(state: NECState, curx, bi, t1x, t1y, t1z, t2x, t2y, t2z, air, aii, bir, bii, cir, cii, icon1, icon2, ld: int, ld3: int):
-    """Computes A, B, C current interpolation coefficients and converts patch currents to X, Y, Z."""
+
+def cabc(
+    state: NECState, curx, bi, t1x, t1y, t1z, t2x, t2y, t2z,
+    air, aii, bir, bii, cir, cii, icon1, icon2, ld: int, ld3: int
+):
+    """Computes A, B, C current coeffs and converts patch currents to XYZ."""
     tp, ccj = 6.283185308, complex(0.0, -0.01666666667)
-    if state.n != 0:
+    nSeg = state.n
+    if nSeg != 0:
         for arr in (air, aii, bir, bii, cir, cii):
-            arr[: state.n] = 0.0
-        for i in range(state.n):
-            c_val = complex(curx[i])
-            ar, ai = c_val.real, c_val.imag
+            arr[:nSeg] = 0.0
+        for i in range(nSeg):
+            cVal = complex(curx[i])
+            ar, ai = cVal.real, cVal.imag
             tbf(state, t1x, bi, icon1, icon2, 1, i + 1)
-            for jx in range(state.jsno):
-                j = int(state.jco[jx]) - 1
-                air[j] += state.ax[jx] * ar
-                aii[j] += state.ax[jx] * ai
-                bir[j] += state.bx[jx] * ar
-                bii[j] += state.bx[jx] * ai
-                cir[j] += state.cx[jx] * ar
-                cii[j] += state.cx[jx] * ai
+            jsno = state.jsno
+            jArr = state.jco[:jsno].astype(npy.intp) - 1
+            air[jArr] += state.ax[:jsno]*ar
+            aii[jArr] += state.ax[:jsno]*ai
+            bir[jArr] += state.bx[:jsno]*ar
+            bii[jArr] += state.bx[:jsno]*ai
+            cir[jArr] += state.cx[:jsno]*ar
+            cii[jArr] += state.cx[:jsno]*ai
 
-        for is_idx in range(state.nqds):
-            i = int(state.iqds[is_idx])
-            i_idx = i - 1
-            jxx = int(icon1[i_idx])
-            icon1[i_idx] = 0
+        for isIdx in range(state.nqds):
+            i = int(state.iqds[isIdx])
+            iIdx = i - 1
+            jxx = int(icon1[iIdx])
+            icon1[iIdx] = 0
             tbf(state, t1x, bi, icon1, icon2, 0, i)
-            icon1[i_idx] = jxx
-            sh = t1x[i_idx] * 0.5
-            jsno_idx = state.jsno - 1
-            curd = ccj * state.vqds[is_idx] / ((math.log(2.0 * sh / bi[i_idx]) - 1.0) * (state.bx[jsno_idx] * math.cos(tp * sh) + state.cx[jsno_idx] * math.sin(tp * sh)) * state.wlam)
+            icon1[iIdx] = jxx
+            sh = t1x[iIdx]*0.5
+            jsnoIdx = state.jsno - 1
+            curd = ccj*state.vqds[isIdx]/(
+                (math.log(2.0*sh/bi[iIdx]) - 1.0)
+                *(
+                    state.bx[jsnoIdx]*math.cos(tp*sh)
+                    + state.cx[jsnoIdx]*math.sin(tp*sh)
+                )
+                *state.wlam
+            )
             ar, ai = curd.real, curd.imag
-            for jx in range(state.jsno):
-                j = int(state.jco[jx]) - 1
-                air[j] += state.ax[jx] * ar
-                aii[j] += state.ax[jx] * ai
-                bir[j] += state.bx[jx] * ar
-                bii[j] += state.bx[jx] * ai
-                cir[j] += state.cx[jx] * ar
-                cii[j] += state.cx[jx] * ai
+            jsno = state.jsno
+            jArr = state.jco[:jsno].astype(npy.intp) - 1
+            air[jArr] += state.ax[:jsno]*ar
+            aii[jArr] += state.ax[:jsno]*ai
+            bir[jArr] += state.bx[:jsno]*ar
+            bii[jArr] += state.bx[:jsno]*ai
+            cir[jArr] += state.cx[:jsno]*ar
+            cii[jArr] += state.cx[:jsno]*ai
 
-        for i in range(state.n):
-            curx[i] = complex(air[i] + cir[i], aii[i] + cii[i])
+        curx[:nSeg] = (air[:nSeg] + cir[:nSeg]) + 1j*(aii[:nSeg] + cii[:nSeg])
 
-    if state.m == 0:
+    mPat = state.m
+    if mPat == 0:
         return
-    k = ld - state.m - 1
-    jco1 = state.n + 2 * state.m
-    jco2 = jco1 + state.m
-    for _ in range(state.m):
-        k += 1
-        jco1 -= 2
-        jco2 -= 3
-        cs1, cs2 = complex(curx[jco1]), complex(curx[jco1 + 1])
-        curx[jco2] = cs1 * t1x[k] + cs2 * t2x[k]
-        curx[jco2 + 1] = cs1 * t1y[k] + cs2 * t2y[k]
-        curx[jco2 + 2] = cs1 * t1z[k] + cs2 * t2z[k]
-
+    # k runs from ld - mPat to ld - 1; jco1 steps down by 2; jco2 steps down by 3
+    kIdx = npy.arange(ld - mPat, ld)
+    j1Idx = nSeg + 2*mPat - 2*(npy.arange(mPat) + 1)
+    j2Idx = nSeg + 3*mPat - 3*(npy.arange(mPat) + 1)
+    cs1 = curx[j1Idx].astype(npy.complex128)
+    cs2 = curx[j1Idx + 1].astype(npy.complex128)
+    curx[j2Idx] = cs1*t1x[kIdx] + cs2*t2x[kIdx]
+    curx[j2Idx + 1] = cs1*t1y[kIdx] + cs2*t2y[kIdx]
+    curx[j2Idx + 2] = cs1*t1z[kIdx] + cs2*t2z[kIdx]
 
 def solgf(state: NECState, a, b, c, d, xy, y, np_sym, n1, n, mp_sym, m1, m, n1c, n2c, n2cz, ip, ld2, ld3, iresrv):
     """Solves partitioned N.G.F. system using Schur complement."""

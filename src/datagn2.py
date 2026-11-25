@@ -1,7 +1,7 @@
 import math
 import numpy as npy
-from .nec_state import NECState, TA
-
+from .necState import NECState, TA
+from scipy.spatial import cKDTree
 
 def patch(
     state: NECState,
@@ -272,28 +272,14 @@ def arc(
         bi[i] = rad
         itag[i] = itg
 
-
 def conect(
-    state: NECState,
-    x: npy.ndarray,
-    y: npy.ndarray,
-    z: npy.ndarray,
-    bi: npy.ndarray,
-    salp: npy.ndarray,
-    t1x: npy.ndarray,
-    t1y: npy.ndarray,
-    t1z: npy.ndarray,
-    t2x: npy.ndarray,
-    t2y: npy.ndarray,
-    t2z: npy.ndarray,
-    icon1: npy.ndarray,
-    icon2: npy.ndarray,
-    iconx: npy.ndarray,
-    ignd: int,
-    iw,
-    ld: int,
+    state: NECState, x: npy.ndarray, y: npy.ndarray, z: npy.ndarray,
+    bi: npy.ndarray, salp: npy.ndarray, t1x: npy.ndarray, t1y: npy.ndarray,
+    t1z: npy.ndarray, t2x: npy.ndarray, t2y: npy.ndarray, t2z: npy.ndarray,
+    icon1: npy.ndarray, icon2: npy.ndarray, iconx: npy.ndarray,
+    ignd: int, iw, ld: int,
 ):
-    """Sets up segment connection data in ICON1 and ICON2 by finding contacting segment ends and patches."""
+    """Sets up segment connection data in ICON1 and ICON2."""
     jmax = 30
     smin = 1.0e-3
     nsmax = 50
@@ -305,7 +291,10 @@ def conect(
     if ignd != 0:
         iw.write("\n   GROUND PLANE SPECIFIED.\n")
         if ignd > 0:
-            iw.write("\n   WHERE WIRE ENDS TOUCH GROUND, CURRENT WILL BE INTERPOLATED TO IMAGE IN GROUND PLANE.\n\n")
+            iw.write(
+                "\n   WHERE WIRE ENDS TOUCH GROUND, CURRENT WILL BE"
+                " INTERPOLATED TO IMAGE IN GROUND PLANE.\n\n"
+            )
         if state.ipsym == 2:
             state.np *= 2
             state.mp *= 2
@@ -316,125 +305,188 @@ def conect(
             raise RuntimeError("CONECT: NP > N")
         if state.np == state.n and state.mp == state.m:
             state.ipsym = 0
-
     if state.n != 0:
-        for i in range(state.n):
-            i_seg = i + 1
-            iconx[i] = 0
-            xi1, yi1, zi1 = x[i], y[i], z[i]
-            xi2, yi2, zi2 = t1x[i], t1y[i], t1z[i]
-            slen = math.sqrt((xi2 - xi1) ** 2 + (yi2 - yi1) ** 2 + (zi2 - zi1) ** 2) * smin
+        nSeg = state.n
+        iconx[:nSeg] = 0
+        x1, y1, z1 = x[:nSeg], y[:nSeg], z[:nSeg]
+        x2, y2, z2 = t1x[:nSeg], t1y[:nSeg], t1z[:nSeg]
+        slenArr = npy.sqrt(
+            (x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2
+        )*smin
+
+        # Stack all 2*N endpoints: indices 0..N-1 are End 1, N..2N-1 are End 2
+        pts = npy.vstack(
+            [npy.column_stack([x1, y1, z1]), npy.column_stack([x2, y2, z2])]
+        )
+        tree = cKDTree(pts)
+        maxTol = float(npy.max(slenArr))*1.001
+
+        for i in range(nSeg):
+            iSeg = i + 1
+            xi1, yi1, zi1 = float(x1[i]), float(y1[i]), float(z1[i])
+            xi2, yi2, zi2 = float(x2[i]), float(y2[i]), float(z2[i])
+            slen = float(slenArr[i])
 
             # End 1 connection
-            skip_end1_search = False
+            skipEnd1 = False
             if ignd >= 1:
                 if zi1 <= -slen:
-                    raise RuntimeError(f" GEOMETRY DATA ERROR-- SEGMENT{i_seg:5d} EXTENDS BELOW GROUND")
+                    raise RuntimeError(
+                        f" GEOMETRY DATA ERROR-- SEGMENT{iSeg:5d}"
+                        f" EXTENDS BELOW GROUND"
+                    )
                 if zi1 <= slen:
-                    icon1[i] = i_seg
+                    icon1[i] = iSeg
                     z[i] = 0.0
-                    skip_end1_search = True
+                    skipEnd1 = True
 
-            if not skip_end1_search:
-                ic = i_seg
-                found = False
-                for _ in range(2, state.n + 1):
-                    ic += 1
-                    if ic > state.n:
-                        ic = 1
-                    ic_idx = ic - 1
-                    sep = abs(xi1 - x[ic_idx]) + abs(yi1 - y[ic_idx]) + abs(zi1 - z[ic_idx])
-                    if sep <= slen:
-                        icon1[i] = -ic
-                        found = True
-                        break
-                    sep = abs(xi1 - t1x[ic_idx]) + abs(yi1 - t1y[ic_idx]) + abs(zi1 - t1z[ic_idx])
-                    if sep <= slen:
-                        icon1[i] = ic
-                        found = True
-                        break
-                if not found:
-                    if not (i_seg < state.n2 and icon1[i] > 10000):
-                        icon1[i] = 0
+            if not skipEnd1:
+                cand = tree.query_ball_point([xi1, yi1, zi1], r=maxTol)
+                bestIcon = 0
+                bestRank = nSeg + 1
+                for idx in cand:
+                    seg0 = idx if idx < nSeg else (idx - nSeg)
+                    if seg0 == i:
+                        continue
+                    rank = (seg0 - i - 1)%nSeg
+                    if rank >= bestRank:
+                        continue
+                    if idx < nSeg:
+                        sep = (
+                            abs(xi1 - float(x1[seg0]))
+                            + abs(yi1 - float(y1[seg0]))
+                            + abs(zi1 - float(z1[seg0]))
+                        )
+                        if sep <= slen:
+                            bestRank = rank
+                            bestIcon = -(seg0 + 1)
+                    else:
+                        sep = (
+                            abs(xi1 - float(x2[seg0]))
+                            + abs(yi1 - float(y2[seg0]))
+                            + abs(zi1 - float(z2[seg0]))
+                        )
+                        if sep <= slen:
+                            bestRank = rank
+                            bestIcon = seg0 + 1
+                if bestIcon != 0:
+                    icon1[i] = bestIcon
+                elif not (iSeg < state.n2 and icon1[i] > 10000):
+                    icon1[i] = 0
 
             # End 2 connection
-            skip_end2_search = False
+            skipEnd2 = False
             if ignd >= 1:
                 if zi2 <= -slen:
-                    raise RuntimeError(f" GEOMETRY DATA ERROR-- SEGMENT{i_seg:5d} EXTENDS BELOW GROUND")
+                    raise RuntimeError(
+                        f" GEOMETRY DATA ERROR-- SEGMENT{iSeg:5d}"
+                        f" EXTENDS BELOW GROUND"
+                    )
                 if zi2 <= slen:
-                    if icon1[i] == i_seg:
-                        raise RuntimeError(f" GEOMETRY DATA ERROR--SEGMENT{i_seg:5d} LIES IN GROUND PLANE.")
-                    icon2[i] = i_seg
+                    if icon1[i] == iSeg:
+                        raise RuntimeError(
+                            f" GEOMETRY DATA ERROR--SEGMENT{iSeg:5d}"
+                            f" LIES IN GROUND PLANE."
+                        )
+                    icon2[i] = iSeg
                     t1z[i] = 0.0
-                    skip_end2_search = True
-            if not skip_end2_search:
-                ic = i_seg
-                found = False
-                for _ in range(2, state.n + 1):
-                    ic += 1
-                    if ic > state.n:
-                        ic = 1
-                    ic_idx = ic - 1
-                    sep = abs(xi2 - x[ic_idx]) + abs(yi2 - y[ic_idx]) + abs(zi2 - z[ic_idx])
-                    if sep <= slen:
-                        icon2[i] = ic
-                        found = True
-                        break
-                    sep = abs(xi2 - t1x[ic_idx]) + abs(yi2 - t1y[ic_idx]) + abs(zi2 - t1z[ic_idx])
-                    if sep <= slen:
-                        icon2[i] = -ic
-                        found = True
-                        break
-                if not found:
-                    if not (i_seg < state.n2 and icon2[i] > 10000):
-                        icon2[i] = 0
+                    skipEnd2 = True
 
+            if not skipEnd2:
+                cand = tree.query_ball_point([xi2, yi2, zi2], r=maxTol)
+                bestIcon = 0
+                bestRank = nSeg + 1
+                for idx in cand:
+                    seg0 = idx if idx < nSeg else (idx - nSeg)
+                    if seg0 == i:
+                        continue
+                    rank = (seg0 - i - 1)%nSeg
+                    if rank >= bestRank:
+                        continue
+                    if idx < nSeg:
+                        sep = (
+                            abs(xi2 - float(x1[seg0]))
+                            + abs(yi2 - float(y1[seg0]))
+                            + abs(zi2 - float(z1[seg0]))
+                        )
+                        if sep <= slen:
+                            bestRank = rank
+                            bestIcon = seg0 + 1
+                    else:
+                        sep = (
+                            abs(xi2 - float(x2[seg0]))
+                            + abs(yi2 - float(y2[seg0]))
+                            + abs(zi2 - float(z2[seg0]))
+                        )
+                        if sep <= slen:
+                            bestRank = rank
+                            bestIcon = -(seg0 + 1)
+                if bestIcon != 0:
+                    icon2[i] = bestIcon
+                elif not (iSeg < state.n2 and icon2[i] > 10000):
+                    icon2[i] = 0
         # Wire-surface connections for new patches
         if state.m != 0:
             ix = ld - state.m1
-            i_pat = state.m2
-            while i_pat <= state.m:
+            iPat = state.m2
+            while iPat <= state.m:
                 ix -= 1
                 xs, ys, zs = x[ix], y[ix], z[ix]
                 for iseg in range(state.n):
                     xi1, yi1, zi1 = x[iseg], y[iseg], z[iseg]
                     xi2, yi2, zi2 = t1x[iseg], t1y[iseg], t1z[iseg]
-                    slen = (abs(xi2 - xi1) + abs(yi2 - yi1) + abs(zi2 - zi1)) * smin
+                    slen = (
+                        abs(xi2 - xi1) + abs(yi2 - yi1) + abs(zi2 - zi1)
+                    )*smin
 
                     sep = abs(xi1 - xs) + abs(yi1 - ys) + abs(zi1 - zs)
                     if sep <= slen:
-                        icon1[iseg] = 10000 + i_pat
-                        subph(state, i_pat, 0, x, y, z, bi, salp, t1x, t1y, t1z, t2x, t2y, t2z, ld)
+                        icon1[iseg] = 10000 + iPat
+                        subph(
+                            state, iPat, 0, x, y, z, bi, salp,
+                            t1x, t1y, t1z, t2x, t2y, t2z, ld
+                        )
                         break
 
                     sep = abs(xi2 - xs) + abs(yi2 - ys) + abs(zi2 - zs)
                     if sep <= slen:
-                        icon2[iseg] = 10000 + i_pat
-                        subph(state, i_pat, 0, x, y, z, bi, salp, t1x, t1y, t1z, t2x, t2y, t2z, ld)
+                        icon2[iseg] = 10000 + iPat
+                        subph(
+                            state, iPat, 0, x, y, z, bi, salp,
+                            t1x, t1y, t1z, t2x, t2y, t2z, ld
+                        )
                         break
-                i_pat += 1
+                iPat += 1
 
             # New segments connected to NGF patches
             if state.m1 != 0 and state.n2 <= state.n:
                 ix = ld
-                i_pat = 1
-                while i_pat <= state.m1:
+                iPat = 1
+                while iPat <= state.m1:
                     ix -= 1
                     xs, ys, zs = x[ix], y[ix], z[ix]
                     for iseg in range(state.n2 - 1, state.n):
                         xi1, yi1, zi1 = x[iseg], y[iseg], z[iseg]
                         xi2, yi2, zi2 = t1x[iseg], t1y[iseg], t1z[iseg]
-                        slen = (abs(xi2 - xi1) + abs(yi2 - yi1) + abs(zi2 - zi1)) * smin
+                        slen = (
+                            abs(xi2 - xi1) + abs(yi2 - yi1) + abs(zi2 - zi1)
+                        )*smin
 
                         sep = abs(xi1 - xs) + abs(yi1 - ys) + abs(zi1 - zs)
                         if sep <= slen:
                             icon1[iseg] = 10001 + state.m
                             state.npcon += 1
                             if state.npcon > npmax:
-                                raise RuntimeError(f" ERROR - NO. NEW SEGMENTS CONNECTED TO N.G.F. SEGMENTS OR PATCHES EXCEEDS LIMIT OF{npmax:5d}")
-                            state.ipcon[state.npcon - 1] = i_pat
-                            subph(state, i_pat, 1, x, y, z, bi, salp, t1x, t1y, t1z, t2x, t2y, t2z, ld)
+                                raise RuntimeError(
+                                    f" ERROR - NO. NEW SEGMENTS CONNECTED TO"
+                                    f" N.G.F. SEGMENTS OR PATCHES EXCEEDS"
+                                    f" LIMIT OF{npmax:5d}"
+                                )
+                            state.ipcon[state.npcon - 1] = iPat
+                            subph(
+                                state, iPat, 1, x, y, z, bi, salp,
+                                t1x, t1y, t1z, t2x, t2y, t2z, ld
+                            )
                             break
 
                         sep = abs(xi2 - xs) + abs(yi2 - ys) + abs(zi2 - zs)
@@ -442,87 +494,105 @@ def conect(
                             icon2[iseg] = 10001 + state.m
                             state.npcon += 1
                             if state.npcon > npmax:
-                                raise RuntimeError(f" ERROR - NO. NEW SEGMENTS CONNECTED TO N.G.F. SEGMENTS OR PATCHES EXCEEDS LIMIT OF{npmax:5d}")
-                            state.ipcon[state.npcon - 1] = i_pat
-                            subph(state, i_pat, 1, x, y, z, bi, salp, t1x, t1y, t1z, t2x, t2y, t2z, ld)
+                                raise RuntimeError(
+                                    f" ERROR - NO. NEW SEGMENTS CONNECTED TO"
+                                    f" N.G.F. SEGMENTS OR PATCHES EXCEEDS"
+                                    f" LIMIT OF{npmax:5d}"
+                                )
+                            state.ipcon[state.npcon - 1] = iPat
+                            subph(
+                                state, iPat, 1, x, y, z, bi, salp,
+                                t1x, t1y, t1z, t2x, t2y, t2z, ld
+                            )
                             break
-                    i_pat += 1
-
-    iw.write(f"\n   TOTAL SEGMENTS USED={state.n:5d}     NO. SEG. IN A SYMMETRIC CELL={state.np:5d}     SYMMETRY FLAG={state.ipsym:3d}\n")
+                    iPat += 1
+    iw.write(
+        f"\n   TOTAL SEGMENTS USED={state.n:5d}"
+        f"     NO. SEG. IN A SYMMETRIC CELL={state.np:5d}"
+        f"     SYMMETRY FLAG={state.ipsym:3d}\n"
+    )
     if state.m > 0:
-        iw.write(f"   TOTAL PATCHES USED={state.m:5d}      NO. PATCHES IN A SYMMETRIC CELL={state.mp:5d}\n")
+        iw.write(
+            f"   TOTAL PATCHES USED={state.m:5d}"
+            f"      NO. PATCHES IN A SYMMETRIC CELL={state.mp:5d}\n"
+        )
 
-    iseg_sym = (state.n + state.m) // (state.np + state.mp)
-    if iseg_sym != 1:
+    isegSym = (state.n + state.m)//(state.np + state.mp)
+    if isegSym != 1:
         if state.ipsym == 0:
             raise RuntimeError("CONECT: Symmetry mismatch with IPSYM == 0")
         elif state.ipsym < 0:
-            iw.write(f" STRUCTURE HAS{iseg_sym:4d} FOLD ROTATIONAL SYMMETRY\n\n")
+            iw.write(f" STRUCTURE HAS{isegSym:4d} FOLD ROTATIONAL SYMMETRY\n\n")
         else:
-            ic = 3 if iseg_sym == 8 else iseg_sym // 2
+            ic = 3 if isegSym == 8 else isegSym//2
             iw.write(f" STRUCTURE HAS{ic:2d} PLANES OF SYMMETRY\n\n")
 
     if state.n == 0:
         return
 
-    iw.write("\n\n         - MULTIPLE WIRE JUNCTIONS -\n JUNCTION    SEGMENTS  (- FOR END 1, + FOR END 2)\n")
-    junc_cnt = 0
+    iw.write(
+        "\n\n         - MULTIPLE WIRE JUNCTIONS -\n"
+        " JUNCTION    SEGMENTS  (- FOR END 1, + FOR END 2)\n"
+    )
+    juncCnt = 0
 
     for j in range(state.n):
-        j_seg = j + 1
-        for end_pass in (1, 2):
-            if end_pass == 1:
-                iend = -1
+        jSeg = j + 1
+        for endPass in (1, 2):
+            if endPass == 1:
                 jend = -1
                 ix = int(icon1[j])
                 ic = 1
-                state.jco[0] = -j_seg
+                state.jco[0] = -jSeg
                 xa, ya, za = x[j], y[j], z[j]
             else:
-                iend = 1
                 jend = 1
                 ix = int(icon2[j])
                 ic = 1
-                state.jco[0] = j_seg
+                state.jco[0] = jSeg
                 xa, ya, za = t1x[j], t1y[j], t1z[j]
 
-            if ix == 0 or ix == j_seg or ix > 10000:
+            if ix == 0 or ix == jSeg or ix > 10000:
                 continue
 
             nsflg = 0
             aborted = False
             while True:
                 if ix == 0:
-                    raise RuntimeError(f" CONNECT - SEGMENT CONNECTION ERROR FOR SEGMENT{ix:5d}")
+                    raise RuntimeError(
+                        f" CONNECT - SEGMENT CONNECTION ERROR FOR SEGMENT{ix:5d}"
+                    )
                 if ix < 0:
                     ix = -ix
                 else:
                     jend = -jend
 
-                if ix == j_seg:
+                if ix == jSeg:
                     break
-                if ix < j_seg:
+                if ix < jSeg:
                     aborted = True
                     break
 
                 ic += 1
                 if ic > jmax:
-                    raise RuntimeError(f" CONNECT - SEGMENT CONNECTION ERROR FOR SEGMENT{ix:5d}")
-                state.jco[ic - 1] = ix * jend
+                    raise RuntimeError(
+                        f" CONNECT - SEGMENT CONNECTION ERROR FOR SEGMENT{ix:5d}"
+                    )
+                state.jco[ic - 1] = ix*jend
                 if ix > state.n1:
                     nsflg = 1
 
-                ix_idx = ix - 1
+                ixIdx = ix - 1
                 if jend == 1:
-                    xa += t1x[ix_idx]
-                    ya += t1y[ix_idx]
-                    za += t1z[ix_idx]
-                    ix = int(icon2[ix_idx])
+                    xa += t1x[ixIdx]
+                    ya += t1y[ixIdx]
+                    za += t1z[ixIdx]
+                    ix = int(icon2[ixIdx])
                 else:
-                    xa += x[ix_idx]
-                    ya += y[ix_idx]
-                    za += z[ix_idx]
-                    ix = int(icon1[ix_idx])
+                    xa += x[ixIdx]
+                    ya += y[ixIdx]
+                    za += z[ixIdx]
+                    ix = int(icon1[ixIdx])
 
             if aborted:
                 continue
@@ -532,45 +602,54 @@ def conect(
             ya /= sep
             za /= sep
             for i in range(ic):
-                seg_signed = int(state.jco[i])
-                if seg_signed > 0:
-                    s_idx = seg_signed - 1
-                    t1x[s_idx], t1y[s_idx], t1z[s_idx] = xa, ya, za
+                segSigned = int(state.jco[i])
+                if segSigned > 0:
+                    sIdx = segSigned - 1
+                    t1x[sIdx], t1y[sIdx], t1z[sIdx] = xa, ya, za
                 else:
-                    s_idx = -seg_signed - 1
-                    x[s_idx], y[s_idx], z[s_idx] = xa, ya, za
+                    sIdx = -segSigned - 1
+                    x[sIdx], y[sIdx], z[sIdx] = xa, ya, za
 
             if state.n1 != 0 and nsflg != 0:
                 for i in range(ic):
-                    ix_abs = abs(int(state.jco[i]))
-                    if ix_abs <= state.n1 and iconx[ix_abs - 1] == 0:
+                    ixAbs = abs(int(state.jco[i]))
+                    if ixAbs <= state.n1 and iconx[ixAbs - 1] == 0:
                         state.nscon += 1
                         if state.nscon > nsmax:
-                            raise RuntimeError(f" ERROR - NO. NEW SEGMENTS CONNECTED TO N.G.F. SEGMENTS OR PATCHES EXCEEDS LIMIT OF{nsmax:5d}")
-                        state.iscon[state.nscon - 1] = ix_abs
-                        iconx[ix_abs - 1] = state.nscon
+                            raise RuntimeError(
+                                f" ERROR - NO. NEW SEGMENTS CONNECTED TO"
+                                f" N.G.F. SEGMENTS OR PATCHES EXCEEDS"
+                                f" LIMIT OF{nsmax:5d}"
+                            )
+                        state.iscon[state.nscon - 1] = ixAbs
+                        iconx[ixAbs - 1] = state.nscon
 
             if ic >= 3:
-                junc_cnt += 1
-                segs_str = "".join(f"{int(state.jco[k]):5d}" for k in range(min(ic, 20)))
-                iw.write(f" {junc_cnt:5d}     {segs_str}\n")
+                juncCnt += 1
+                segsStr = "".join(
+                    f"{int(state.jco[k]):5d}" for k in range(min(ic, 20))
+                )
+                iw.write(f" {juncCnt:5d}     {segsStr}\n")
                 for offset in range(20, ic, 20):
-                    extra_str = "".join(f"{int(state.jco[k]):5d}" for k in range(offset, min(ic, offset + 20)))
-                    iw.write(f"           {extra_str}\n")
+                    extraStr = "".join(
+                        f"{int(state.jco[k]):5d}"
+                        for k in range(offset, min(ic, offset + 20))
+                    )
+                    iw.write(f"           {extraStr}\n")
 
-    if junc_cnt == 0:
+    if juncCnt == 0:
         iw.write("  NONE\n")
 
     if state.n1 != 0 and state.m1 != state.m:
         for j in range(state.n1):
-            connects_new_patch = False
+            connectsNewPatch = False
             ix1 = int(icon1[j])
             if ix1 >= 10000 and (ix1 - 10000) > state.m1:
-                connects_new_patch = True
+                connectsNewPatch = True
             ix2 = int(icon2[j])
             if ix2 >= 10000 and (ix2 - 10000) >= state.m2:
-                connects_new_patch = True
-            if connects_new_patch and iconx[j] == 0:
+                connectsNewPatch = True
+            if connectsNewPatch and iconx[j] == 0:
                 state.nscon += 1
                 state.iscon[state.nscon - 1] = j + 1
                 iconx[j] = state.nscon

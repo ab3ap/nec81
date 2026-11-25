@@ -1,7 +1,7 @@
 import math
 import cmath
 import numpy as npy
-from .nec_state import NECState
+from .necState import NECState
 from .eksc import test
 
 
@@ -248,50 +248,102 @@ def unere(state: NECState, xob: float, yob: float, zob: float):
     state.exk, state.eyk, state.ezk = state.exk * rrv + edp * px, state.eyk * rrv + edp * py, state.ezk * rrv
     edp = (state.exs * px + state.eys * py) * (rrh - rrv)
     state.exs, state.eys, state.ezs = state.exs * rrv + edp * px, state.eys * rrv + edp * py, state.ezs * rrv
-def pcint(state: NECState, xi: float, yi: float, zi: float, cabi: float, sabi: float, salpi: float) -> npy.ndarray:
-    """Integrates over surface patch at wire connection point. Returns 9-element complex array."""
-    tpi, nint = 6.283185308, 10
+
+def pcint(
+    state: NECState, xi: float, yi: float, zi: float,
+    cabi: float, sabi: float, salpi: float
+) -> npy.ndarray:
+    """Vectorized 10x10 integration over surface patch at wire junction."""
+    tpi, nint, const = 6.283185308, 10, 4.771341188
     t1xj, t1yj, t1zj = state.cabj, state.sabj, state.salpj
     t2xj, t2yj, t2zj = state.b, state.ind1, state.ind2
-    d = math.sqrt(state.s) * 0.5
-    ds = 4.0 * d / float(nint)
-    gcon, fcon = 1.0 / state.s, 1.0 / (2.0 * tpi * d)
-    xxj, xyj, xzj, xs = state.xj, state.yj, state.zj, state.s
-    state.s = ds * ds
+    d = math.sqrt(state.s)*0.5
+    ds = 4.0*d/float(nint)
+    gcon, fcon = 1.0/state.s, 1.0/(2.0*tpi*d)
+    patchArea = ds*ds
 
-    s1 = d + ds * 0.5
-    xss, yss, zss = xxj + s1 * (t1xj + t2xj), xyj + s1 * (t1yj + t2yj), xzj + s1 * (t1zj + t2zj)
-    s1 += d
-    s2x = s1
+    # 10x10 quadrature grid offsets s1, s2 across [-d + ds/2 .. d - ds/2]
+    steps = npy.arange(1, nint + 1, dtype=npy.float64)
+    sVals = (d + ds*0.5) - steps*ds
+    s1G, s2G = npy.meshgrid(sVals, sVals, indexing="ij")
+    s1 = s1G.ravel()
+    s2 = s2G.ravel()
+
+    xj = state.xj + s1*t1xj + s2*t2xj
+    yj = state.yj + s1*t1yj + s2*t2yj
+    zj = state.zj + s1*t1zj + s2*t2zj
+
+    if state.ipgnd == 2:
+        zr, t1zr, t2zr = -zj, -t1zj, -t2zj
+    else:
+        zr, t1zr, t2zr = zj, t1zj, t2zj
+
+    rx, ry, rz = xi - xj, yi - yj, zi - zr
+    r2 = rx*rx + ry*ry + rz*rz
+    mValid = (r2 > 1.0e-20)
+    safeR2 = npy.where(mValid, r2, 1.0)
+    r = npy.sqrt(safeR2)
+    tt1 = -tpi*r
+    rt = safeR2*r
+
+    er = npy.exp(1j*(tt1 - 1.570796327))*(const*patchArea)
+    q1 = (tt1*tt1 - 1.0 + 1j*tt1)*er/rt
+    q2 = (3.0 - tt1*tt1 - 3.0j*tt1)*er/(rt*safeR2)
+
+    dot1 = q2*(t1xj*rx + t1yj*ry + t1zr*rz)
+    exkV = npy.where(mValid, q1*t1xj + dot1*rx, 0j)
+    eykV = npy.where(mValid, q1*t1yj + dot1*ry, 0j)
+    ezkV = npy.where(mValid, q1*t1zr + dot1*rz, 0j)
+
+    dot2 = q2*(t2xj*rx + t2yj*ry + t2zr*rz)
+    exsV = npy.where(mValid, q1*t2xj + dot2*rx, 0j)
+    eysV = npy.where(mValid, q1*t2yj + dot2*ry, 0j)
+    ezsV = npy.where(mValid, q1*t2zr + dot2*rz, 0j)
+
+    if state.ipgnd != 1:
+        if state.iperf == 1:
+            exkV, eykV, ezkV = -exkV, -eykV, -ezkV
+            exsV, eysV, ezsV = -exsV, -eysV, -ezsV
+        else:
+            xymag = npy.sqrt(rx*rx + ry*ry)
+            mXy = (xymag > 1.0e-6)
+            safeXy = npy.where(mXy, xymag, 1.0)
+            px = npy.where(mXy, -ry/safeXy, 0.0)
+            py = npy.where(mXy, rx/safeXy, 0.0)
+            cth = npy.where(mXy, rz/npy.sqrt(xymag*xymag + rz*rz), 1.0)
+            rrv = npy.where(
+                mXy,
+                npy.sqrt(1.0 - state.zrati*state.zrati*(1.0 - cth*cth)),
+                1.0 + 0j,
+            )
+            rrh = (state.zrati*cth - rrv)/(state.zrati*cth + rrv)
+            rrv = -(cth - state.zrati*rrv)/(cth + state.zrati*rrv)
+            edp1 = (exkV*px + eykV*py)*(rrh - rrv)
+            exkV, eykV, ezkV = exkV*rrv + edp1*px, eykV*rrv + edp1*py, ezkV*rrv
+            edp2 = (exsV*px + eysV*py)*(rrh - rrv)
+            exsV, eysV, ezsV = exsV*rrv + edp2*px, eysV*rrv + edp2*py, ezsV*rrv
+
+    exk = exkV*cabi + eykV*sabi + ezkV*salpi
+    exs = exsV*cabi + eysV*sabi + ezsV*salpi
+
+    g1 = (d + s1)*(d + s2)*gcon
+    g2 = (d - s1)*(d + s2)*gcon
+    g3 = (d - s1)*(d - s2)*gcon
+    g4 = (d + s1)*(d - s2)*gcon
+    fDen = (s1*s1 + s2*s2)*tpi
+    f1 = s1/fDen - (g1 - g2 - g3 + g4)*fcon
+    f2 = s2/fDen - (g1 + g2 - g3 - g4)*fcon
+
     e = npy.zeros(9, dtype=npy.complex128)
-
-    for _ in range(nint):
-        s1 -= ds
-        s2 = s2x
-        xss, yss, zss = xss - ds * t1xj, yss - ds * t1yj, zss - ds * t1zj
-        state.xj, state.yj, state.zj = xss, yss, zss
-        for _ in range(nint):
-            s2 -= ds
-            state.xj, state.yj, state.zj = state.xj - ds * t2xj, state.yj - ds * t2yj, state.zj - ds * t2zj
-            unere(state, xi, yi, zi)
-            exk = state.exk * cabi + state.eyk * sabi + state.ezk * salpi
-            exs = state.exs * cabi + state.eys * sabi + state.ezs * salpi
-            g1, g2 = (d + s1) * (d + s2) * gcon, (d - s1) * (d + s2) * gcon
-            g3, g4 = (d - s1) * (d - s2) * gcon, (d + s1) * (d - s2) * gcon
-            f2 = (s1 * s1 + s2 * s2) * tpi
-            f1 = s1 / f2 - (g1 - g2 - g3 + g4) * fcon
-            f2 = s2 / f2 - (g1 + g2 - g3 - g4) * fcon
-            e += exk * g1
-            e += exk * g2
-            e += exk * g3
-            e += exk * g4
-            e += exs * g1
-            e += exs * g2
-            e += exs * g3
-            e += exs * g4
-            e += exk * f1 + exs * f2
-
-    state.xj, state.yj, state.zj, state.s = xxj, xyj, xzj, xs
+    e[0] = npy.sum(exk*g1)
+    e[1] = npy.sum(exk*g2)
+    e[2] = npy.sum(exk*g3)
+    e[3] = npy.sum(exk*g4)
+    e[4] = npy.sum(exs*g1)
+    e[5] = npy.sum(exs*g2)
+    e[6] = npy.sum(exs*g3)
+    e[7] = npy.sum(exs*g4)
+    e[8] = npy.sum(exk*f1 + exs*f2)
     return e
 
 

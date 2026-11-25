@@ -4,6 +4,7 @@ try:
 except ImportError:
     from besselHankel import SpecialFunctions
 
+
 class SommerfeldEvaluator:
     def __init__(self):
         self.spec = SpecialFunctions()
@@ -35,24 +36,17 @@ class SommerfeldEvaluator:
         return xlam, dxlam
 
     @staticmethod
-    def testConv(f1r, f2r, f1i, f2i, dmin):
-        # TEST FOR CONVERGENCE IN NUMERICAL INTEGRATION
-        den = abs(f2r)
-        tr = abs(f2i)
-        if den < tr:
-            den = tr
-        if den < dmin:
-            den = dmin
-        if den < 1.0e-37:
-            return 0.0, 0.0
-        tr = abs((f1r - f2r)/den)
-        ti = abs((f1i - f2i)/den)
+    def testConvVec(f1: np.ndarray, f2: np.ndarray, dmin: float):
+        # VECTORIZED CONVERGENCE TEST ACROSS ALL 6 INTEGRALS
+        den = np.maximum(np.maximum(np.abs(f2.real), np.abs(f2.imag)), dmin)
+        safeDen = np.where(den < 1.0e-37, 1.0, den)
+        tr = np.where(den < 1.0e-37, 0.0, np.abs(f1.real - f2.real)/safeDen)
+        ti = np.where(den < 1.0e-37, 0.0, np.abs(f1.imag - f2.imag)/safeDen)
         return tr, ti
 
     def saoa(self, t):
         # SAOA COMPUTES THE INTEGRAND FOR EACH OF THE 6
         # SOMMERFELD INTEGRALS FOR SOURCE AND OBSERVER ABOVE GROUND
-        ans = np.zeros(6, dtype=np.complex128)
         xl, dxl = self.lambdaContour(t)
 
         if self.jh <= 0:
@@ -103,22 +97,21 @@ class SommerfeldEvaluator:
         den2 = self.cksm*dgam/denom2
         den1 = 1.0/(cgam1 + cgam2) - self.cksm/cgam2
         com = dxl*xl*np.exp(-cgam2*self.zph)
-        ans.__setitem__(5, com*b0*den1/self.ck1)
+        a5 = com*b0*den1/self.ck1
         com = com*den2
 
         if self.rho == 0.0:
-            val0 = -com*xl*xl*0.5
-            ans.__setitem__(0, val0)
-            ans.__setitem__(3, val0)
+            a0 = -com*xl*xl*0.5
+            a3 = a0
         else:
             b0p = b0p/self.rho
-            ans.__setitem__(0, -com*xl*(b0p + b0*xl))
-            ans.__setitem__(3, com*xl*b0p)
+            a0 = -com*xl*(b0p + b0*xl)
+            a3 = com*xl*b0p
 
-        ans.__setitem__(1, com*cgam2*cgam2*b0)
-        ans.__setitem__(2, -ans.item(3)*cgam2*self.rho)
-        ans.__setitem__(4, com*b0)
-        return ans
+        a1 = com*cgam2*cgam2*b0
+        a2 = -a3*cgam2*self.rho
+        a4 = com*b0
+        return np.array([a0, a1, a2, a3, a4, a5], dtype=np.complex128)
 
     def rom1(self, n, nx):
         # ROM1 INTEGRATES THE 6 SOMMERFELD INTEGRALS FROM A TO B IN LAMBDA.
@@ -135,13 +128,9 @@ class SommerfeldEvaluator:
         zend = ze - ep
 
         totalSum = np.zeros(n, dtype=np.complex128)
-        t01 = np.zeros(n, dtype=np.complex128)
-        t10 = np.zeros(n, dtype=np.complex128)
-        t20 = np.zeros(n, dtype=np.complex128)
-
         ns = nx
         nt = 0
-        g1 = self.saoa(z)
+        g1 = self.saoa(z)[:n]
 
         while True:
             dz = s/ns
@@ -151,58 +140,28 @@ class SommerfeldEvaluator:
                     break
 
             dzot = dz*0.5
-            g3 = self.saoa(z + dzot)
-            g5 = self.saoa(z + dz)
+            g3 = self.saoa(z + dzot)[:n]
+            g5 = self.saoa(z + dz)[:n]
 
             while True:
-                nogo = 0
-                for i in range(n):
-                    t00 = (g1.item(i) + g5.item(i))*dzot
-                    t01Val = (t00 + dz*g3.item(i))*0.5
-                    t10Val = (4.0*t01Val - t00)/3.0
-                    t01.__setitem__(i, t01Val)
-                    t10.__setitem__(i, t10Val)
-                    # TEST CONVERGENCE OF 3 POINT ROMBERG RESULT
-                    tr, ti = self.testConv(
-                        t01Val.real,
-                        t10Val.real,
-                        t01Val.imag,
-                        t10Val.imag,
-                        0.0,
-                    )
-                    if tr > rx or ti > rx:
-                        nogo = 1
-
-                if nogo == 0:
-                    for i in range(n):
-                        totalSum.__setitem__(i, totalSum.item(i) + t10.item(i))
-                    nt = nt + 2
+                t00 = (g1 + g5)*dzot
+                t01 = (t00 + dz*g3)*0.5
+                t10 = (4.0*t01 - t00)/3.0
+                tr, ti = self.testConvVec(t01, t10, 0.0)
+                if np.all(tr <= rx) and np.all(ti <= rx):
+                    totalSum += t10
+                    nt += 2
                     break
 
-                g2 = self.saoa(z + dz*0.25)
-                g4 = self.saoa(z + dz*0.75)
-                nogo = 0
-                for i in range(n):
-                    g24 = g2.item(i) + g4.item(i)
-                    t02 = (t01.item(i) + dzot*g24)*0.5
-                    t11 = (4.0*t02 - t01.item(i))/3.0
-                    t20Val = (16.0*t11 - t10.item(i))/15.0
-                    t20.__setitem__(i, t20Val)
-                    # TEST CONVERGENCE OF 5 POINT ROMBERG RESULT
-                    tr, ti = self.testConv(
-                        t11.real,
-                        t20Val.real,
-                        t11.imag,
-                        t20Val.imag,
-                        0.0,
-                    )
-                    if tr > rx or ti > rx:
-                        nogo = 1
-
-                if nogo == 0:
-                    for i in range(n):
-                        totalSum.__setitem__(i, totalSum.item(i) + t20.item(i))
-                    nt = nt + 1
+                g2 = self.saoa(z + dz*0.25)[:n]
+                g4 = self.saoa(z + dz*0.75)[:n]
+                t02 = (t01 + dzot*(g2 + g4))*0.5
+                t11 = (4.0*t02 - t01)/3.0
+                t20 = (16.0*t11 - t10)/15.0
+                tr, ti = self.testConvVec(t11, t20, 0.0)
+                if np.all(tr <= rx) and np.all(ti <= rx):
+                    totalSum += t20
+                    nt += 1
                     break
 
                 nt = 0
@@ -238,9 +197,8 @@ class SommerfeldEvaluator:
                                 f'{g4i.real:12.5E}{g4i.imag:12.5E}'
                                 f'{g5i.real:12.5E}{g5i.imag:12.5E}'
                             )
-                    for i in range(n):
-                        totalSum.__setitem__(i, totalSum.item(i) + t20.item(i))
-                    nt = nt + 1
+                    totalSum += t20
+                    nt += 1
                     break
 
             z = z + dz
@@ -262,16 +220,13 @@ class SommerfeldEvaluator:
         crit = 1.0e-4
         maxh = 20
 
-        q1 = np.zeros((6, 20), dtype=np.complex128)
-        q2 = np.zeros((6, 20), dtype=np.complex128)
-        ans1 = np.zeros(6, dtype=np.complex128)
-        ans2 = np.zeros(6, dtype=np.complex128)
+        q1 = np.zeros((nans, 20), dtype=np.complex128)
+        q2 = np.zeros((nans, 20), dtype=np.complex128)
+        ans2 = seed[:nans].copy()
 
         rbk = bk.real
         delStep = dela
         ibx = 1 if ibk == 0 else 0
-        for i in range(nans):
-            ans2.__setitem__(i, seed.item(i))
         self.b = start
 
         inx = 0
@@ -289,9 +244,7 @@ class SommerfeldEvaluator:
                     hitBreak = True
                     break
 
-                s = self.rom1(nans, 2)
-                for i in range(nans):
-                    ans1.__setitem__(i, ans2.item(i) + s.item(i))
+                ans1 = ans2 + self.rom1(nans, 2)
 
                 self.a = self.b
                 self.b = self.b + delStep
@@ -301,62 +254,46 @@ class SommerfeldEvaluator:
                     hitBreak = True
                     break
 
-                s = self.rom1(nans, 2)
-                for i in range(nans):
-                    ans2.__setitem__(i, ans1.item(i) + s.item(i))
+                ans2 = ans1 + self.rom1(nans, 2)
 
-                den = 0.0
-                for i in range(nans):
-                    as1 = ans1.item(i)
-                    as2 = ans2.item(i)
-                    if intIdx >= 2:
-                        for j in range(2, intIdx + 1):
-                            jm = j - 2
-                            aa = q2.item((i, jm))
-                            q1ijm = q1.item((i, jm))
-                            a1 = q1ijm + as1 - 2.0*aa
-                            if a1.real == 0.0 and a1.imag == 0.0:
-                                a1 = q1ijm
-                            else:
-                                a2 = aa - q1ijm
-                                a1 = q1ijm - a2*a2/a1
+                as1 = ans1.copy()
+                as2 = ans2.copy()
+                if intIdx >= 2:
+                    for j in range(2, intIdx + 1):
+                        jm = j - 2
+                        aa = q2[:, jm]
+                        q1jm = q1[:, jm]
+                        a1 = q1jm + as1 - 2.0*aa
+                        z1 = (a1.real == 0.0) & (a1.imag == 0.0)
+                        a2 = aa - q1jm
+                        safeA1 = np.where(z1, 1.0 + 0j, a1)
+                        as1New = np.where(z1, q1jm, q1jm - a2*a2/safeA1)
 
-                            a2 = aa + as2 - 2.0*as1
-                            if a2.real == 0.0 and a2.imag == 0.0:
-                                a2 = aa
-                            else:
-                                diff = as1 - aa
-                                a2 = aa - diff*diff/a2
+                        a2 = aa + as2 - 2.0*as1
+                        z2 = (a2.real == 0.0) & (a2.imag == 0.0)
+                        diff = as1 - aa
+                        safeA2 = np.where(z2, 1.0 + 0j, a2)
+                        as2New = np.where(z2, aa, aa - diff*diff/safeA2)
 
-                            q1.__setitem__((i, jm), as1)
-                            q2.__setitem__((i, jm), as2)
-                            as1 = a1
-                            as2 = a2
+                        q1[:, jm] = as1
+                        q2[:, jm] = as2
+                        as1 = as1New
+                        as2 = as2New
 
-                    q1.__setitem__((i, intIdx - 1), as1)
-                    q2.__setitem__((i, intIdx - 1), as2)
-                    amg = abs(as2.real) + abs(as2.imag)
-                    if amg > den:
-                        den = amg
-
+                q1[:, intIdx - 1] = as1
+                q2[:, intIdx - 1] = as2
+                den = float(np.max(np.abs(as2.real) + np.abs(as2.imag)))
                 denm = 1.0e-3*den*crit
-                jmStart = max(1, intIdx - 3)
-                stepOk = True
-                for j in range(jmStart, intIdx + 1):
-                    for i in range(nans):
-                        a1 = q2.item((i, j - 1))
-                        denVal = (abs(a1.real) + abs(a1.imag))*crit
-                        if denVal < denm:
-                            denVal = denm
-                        a1 = q1.item((i, j - 1)) - a1
-                        amg = abs(a1.real) + abs(a1.imag)
-                        if amg > denVal:
-                            stepOk = False
-                            break
-                    if not stepOk:
-                        break
 
-                if stepOk:
+                jmStart = max(1, intIdx - 3)
+                q1Sub = q1[:, jmStart - 1:intIdx]
+                q2Sub = q2[:, jmStart - 1:intIdx]
+                denVal = np.maximum(
+                    (np.abs(q2Sub.real) + np.abs(q2Sub.imag))*crit, denm
+                )
+                diffSub = q1Sub - q2Sub
+                amg = np.abs(diffSub.real) + np.abs(diffSub.imag)
+                if np.all(amg <= denVal):
                     converged = True
                     break
 
@@ -365,12 +302,7 @@ class SommerfeldEvaluator:
                 self.b = bk
                 delStep = delb
                 s = self.rom1(nans, 2)
-                if ibx == 2:
-                    for i in range(nans):
-                        ans2.__setitem__(i, ans1.item(i) + s.item(i))
-                else:
-                    for i in range(nans):
-                        ans2.__setitem__(i, ans2.item(i) + s.item(i))
+                ans2 = (ans1 + s) if ibx == 2 else (ans2 + s)
             elif not converged:
                 print(' **** NO CONVERGENCE IN SUBROUTINE GSHANK ****')
                 for i in range(nans):
@@ -383,9 +315,7 @@ class SommerfeldEvaluator:
                 break
 
         res = np.zeros(6, dtype=np.complex128)
-        for i in range(nans):
-            avg = 0.5*(q1.item((i, inx - 1)) + q2.item((i, inx - 1)))
-            res.__setitem__(i, avg)
+        res[:nans] = 0.5*(q1[:, inx - 1] + q2[:, inx - 1])
         return res
 
     def evlua(self):
@@ -406,9 +336,7 @@ class SommerfeldEvaluator:
                 sumVec = self.rom1(6, 2)
                 self.a = self.b
                 self.b = complex(delVal, -delVal)
-                ansVec = self.rom1(6, 2)
-                for i in range(6):
-                    sumVec.__setitem__(i, sumVec.item(i) + ansVec.item(i))
+                sumVec = sumVec + self.rom1(6, 2)
             else:
                 self.b = complex(delVal, -delVal)
                 sumVec = self.rom1(6, 2)
@@ -427,9 +355,7 @@ class SommerfeldEvaluator:
             sumVec = self.rom1(6, 2)
             self.a = cp2
             self.b = cp3
-            ansVec = self.rom1(6, 2)
-            for i in range(6):
-                sumVec.__setitem__(i, -(sumVec.item(i) + ansVec.item(i)))
+            sumVec = -(sumVec + self.rom1(6, 2))
 
             # PATH FROM IMAGINARY AXIS TO -INFINITY
             slope = 1000.0
@@ -459,15 +385,12 @@ class SommerfeldEvaluator:
                 sumVec = self.gshank(cp1, bk, 6, ansVec, 0, bk, bk)
                 self.a = cp1
                 self.b = cp2
-                ansVec = self.rom1(6, 1)
-                for i in range(6):
-                    ansVec.__setitem__(i, ansVec.item(i) - sumVec.item(i))
+                ansVec = self.rom1(6, 1) - sumVec
                 sumVec = self.gshank(cp3, bk, 6, ansVec, 0, bk, bk)
                 ansVec = self.gshank(cp2, delta2, 6, sumVec, 0, bk, bk)
             else:
                 # INTEGRATE BELOW BRANCH POINTS, THEN TO + INFINITY
-                for i in range(6):
-                    sumVec.__setitem__(i, -ansVec.item(i))
+                sumVec = -ansVec
                 rmis = self.ck1.real*1.01
                 if self.ck2 + 1.0 > rmis:
                     rmis = self.ck2 + 1.0
@@ -476,14 +399,13 @@ class SommerfeldEvaluator:
                 delta = delta*delVal/abs(delta)
                 ansVec = self.gshank(cp3, delta, 6, sumVec, 1, bk, delta2)
 
-        ansVec.__setitem__(5, ansVec.item(5)*self.ck1)
+        a0, a1, a2, a3, a4, a5 = ansVec
+        a5 = a5*self.ck1
 
         # CONJUGATE SINCE NEC USES EXP(+JWT)
-        erv = np.conj(self.ck1sq*ansVec.item(2))
-        ezv = np.conj(
-            self.ck1sq*(ansVec.item(1) + self.ck2sq*ansVec.item(4))
-        )
-        erh = np.conj(self.ck2sq*(ansVec.item(0) + ansVec.item(5)))
-        eph = -np.conj(self.ck2sq*(ansVec.item(3) + ansVec.item(5)))
+        erv = np.conj(self.ck1sq*a2)
+        ezv = np.conj(self.ck1sq*(a1 + self.ck2sq*a4))
+        erh = np.conj(self.ck2sq*(a0 + a5))
+        eph = -np.conj(self.ck2sq*(a3 + a5))
         return erv, ezv, erh, eph
 

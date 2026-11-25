@@ -1,7 +1,7 @@
 import math
 import cmath
 import numpy as npy
-from .nec_state import NECState, TA
+from .necState import NECState, TA
 from .main2 import atgn2, cang, db10, gwave
 from .nsmaExport import recordAdfSample
 from .plots3d import recordRadiationSample
@@ -227,119 +227,184 @@ def rdpat(state: NECState, cur, gain, air, aii, bir, bii, cir, cii, si, cab, sab
             iw.write(f" {t1:9.2f}{p1:9.2f} {s1:9.2f}      {t2:9.2f}{p2:9.2f} {gain[itmp3] - gmax:9.2f}      {t3:9.2f}{p3:9.2f} {gain[itmp4] - gmax:9.2f}\n")
             itmp3 += 1
             itmp4 += 1
-def ffld(state: NECState, cur, thet: float, phi: float, x, y, z, si, bi, salp, air, aii, bir, bii, cir, cii, cab, sab, ld: int, ld3: int):
-    """Calculates far-zone radiated electric fields (eth, eph)."""
+
+def ffld(
+    state: NECState, cur, thet: float, phi: float, x, y, z, si, bi, salp,
+    air, aii, bir, bii, cir, cii, cab, sab, ld: int, ld3: int
+):
+    """Vectorized far-zone radiated electric fields (eth, eph)."""
     tp, eta = 6.283185308, 376.73
-    const = complex(0.0, -29.97922085)
+    const = -29.97922085j
     phx, phy = -math.sin(phi), math.cos(phi)
-    roz = roz_s = math.cos(thet)
-    thx, thy, thz = roz * phy, -roz * phx, -math.sin(thet)
-    rox, roy = -thz * phy, thz * phx
+    roz = rozS = math.cos(thet)
+    thx, thy, thz = roz*phy, -roz*phx, -math.sin(thet)
+    rox, roy = -thz*phy, thz*phx
 
     cix = ciy = ciz = 0j
-    if state.n != 0:
+    nSeg = state.n
+    if nSeg != 0:
+        xS, yS, zS = x[:nSeg], y[:nSeg], z[:nSeg]
+        cabS, sabS, salpS = cab[:nSeg], sab[:nSeg], salp[:nSeg]
+        el = PI*si[:nSeg]
+        curA = air[:nSeg] + 1j*aii[:nSeg]
+        curB = bii[:nSeg] - 1j*bir[:nSeg]
+        curC = cir[:nSeg] + 1j*cii[:nSeg]
+
         for k in range(1, state.ksymp + 1):
             if k != 1:
                 if state.iperf == 1:
-                    rrv = rrh = complex(-1.0, 0.0)
+                    rrv = rrh = -1.0 + 0j
                 else:
-                    zrsin = cmath.sqrt(1.0 - state.zrati * state.zrati * thz * thz)
-                    rrv = -(roz - state.zrati * zrsin) / (roz + state.zrati * zrsin)
-                    rrh = (state.zrati * roz - zrsin) / (state.zrati * roz + zrsin)
+                    zrsin = cmath.sqrt(
+                        1.0 - state.zrati*state.zrati*thz*thz
+                    )
+                    rrv = -(roz - state.zrati*zrsin)/(roz + state.zrati*zrsin)
+                    rrh = (state.zrati*roz - zrsin)/(state.zrati*roz + zrsin)
                 if state.ifar > 1:
                     rrv1, rrh1 = rrv, rrh
                     tthet = math.tan(thet)
                     if state.ifar != 4:
-                        zrsin = cmath.sqrt(1.0 - state.zrati2 * state.zrati2 * thz * thz)
-                        rrv2 = -(roz - state.zrati2 * zrsin) / (roz + state.zrati2 * zrsin)
-                        rrh2 = (state.zrati2 * roz - zrsin) / (state.zrati2 * roz + zrsin)
-                        darg = -tp * 2.0 * state.ch * roz
+                        zrsin = cmath.sqrt(
+                            1.0 - state.zrati2*state.zrati2*thz*thz
+                        )
+                        rrv2 = (
+                            -(roz - state.zrati2*zrsin)
+                            /(roz + state.zrati2*zrsin)
+                        )
+                        rrh2 = (
+                            (state.zrati2*roz - zrsin)
+                            /(state.zrati2*roz + zrsin)
+                        )
+                        darg = -tp*2.0*state.ch*roz
                 roz = -roz
                 ccx, ccy, ccz = cix, ciy, ciz
 
-            cix = ciy = ciz = 0j
-            for i in range(state.n):
-                omega = -(rox * cab[i] + roy * sab[i] + roz * salp[i])
-                el = PI * si[i]
-                sill = omega * el
-                top, bot = el + sill, el - sill
-                a = (2.0 - omega * omega * el * el / 3.0) * el if abs(omega) < 1.0e-7 else 2.0 * math.sin(sill) / omega
-                too = 1.0 - top * top / 6.0 if abs(top) < 1.0e-7 else math.sin(top) / top
-                boo = 1.0 - bot * bot / 6.0 if abs(bot) < 1.0e-7 else math.sin(bot) / bot
-                b, c = el * (boo - too), el * (boo + too)
-                rr = a * air[i] + b * bii[i] + c * cir[i]
-                ri = a * aii[i] - b * bir[i] + c * cii[i]
-                arg = tp * (x[i] * rox + y[i] * roy + z[i] * roz)
+            omega = -(rox*cabS + roy*sabS + roz*salpS)
+            sill = omega*el
+            top, bot = el + sill, el - sill
 
-                if k == 2 and state.ifar >= 2:
-                    dr = z[i] * tthet
-                    d = dr * phy + x[i]
-                    if state.ifar != 2:
-                        d = math.sqrt(d * d + (y[i] - dr * phx) ** 2)
-                    if state.ifar != 3 and (state.scrwl - d) >= 0.0:
-                        d += state.t2
-                        zscrn = state.t1 * d * math.log(d / state.t2)
-                        zscrn = (zscrn * state.zrati) / (eta * state.zrati + zscrn)
-                        zrsin = cmath.sqrt(1.0 - zscrn * zscrn * thz * thz)
-                        rrv = (roz + zscrn * zrsin) / (-roz + zscrn * zrsin)
-                        rrh = (zscrn * roz + zrsin) / (zscrn * roz - zrsin)
-                    else:
-                        if state.ifar == 5:
-                            d = dr * phy + x[i]
-                        if state.ifar == 4 or (state.cl - d) > 0.0:
-                            rrv, rrh = rrv1, rrh1
-                        else:
-                            rrv, rrh = rrv2, rrh2
-                            arg += darg
-                    exa = complex(math.cos(arg), math.sin(arg)) * complex(rr, ri)
-                    tix, tiy, tiz = exa * cab[i], exa * sab[i], exa * salp[i]
-                    cdp = (tix * phx + tiy * phy) * (rrh - rrv)
-                    cix += tix * rrv + cdp * phx
-                    ciy += tiy * rrv + cdp * phy
-                    ciz -= tiz * rrv
+            mOm = (npy.abs(omega) < 1.0e-7)
+            safeOm = npy.where(mOm, 1.0, omega)
+            a = npy.where(
+                mOm, (2.0 - omega*omega*el*el/3.0)*el,
+                2.0*npy.sin(sill)/safeOm
+            )
+            mTop = (npy.abs(top) < 1.0e-7)
+            too = npy.where(
+                mTop, 1.0 - top*top/6.0,
+                npy.sin(top)/npy.where(mTop, 1.0, top)
+            )
+            mBot = (npy.abs(bot) < 1.0e-7)
+            boo = npy.where(
+                mBot, 1.0 - bot*bot/6.0,
+                npy.sin(bot)/npy.where(mBot, 1.0, bot)
+            )
+            b, c = el*(boo - too), el*(boo + too)
+            curTot = a*curA + b*curB + c*curC
+            arg = tp*(xS*rox + yS*roy + zS*roz)
+
+            if k == 2 and state.ifar >= 2:
+                dr = zS*tthet
+                d = dr*phy + xS
+                if state.ifar != 2:
+                    d = npy.sqrt(d*d + (yS - dr*phx)**2)
+                rrvA = npy.full(nSeg, rrv1, dtype=npy.complex128)
+                rrhA = npy.full(nSeg, rrh1, dtype=npy.complex128)
+                if state.ifar != 3:
+                    mScrn = ((state.scrwl - d) >= 0.0)
                 else:
-                    exa = complex(math.cos(arg), math.sin(arg)) * complex(rr, ri)
-                    cix += exa * cab[i]
-                    ciy += exa * sab[i]
-                    ciz += exa * salp[i]
+                    mScrn = npy.zeros(nSeg, dtype=bool)
+                if npy.any(mScrn):
+                    dSc = d[mScrn] + state.t2
+                    zscrn = state.t1*dSc*npy.log(dSc/state.t2)
+                    zscrn = (zscrn*state.zrati)/(eta*state.zrati + zscrn)
+                    zrsin = npy.sqrt(1.0 - zscrn*zscrn*thz*thz)
+                    rrvA[mScrn] = (roz + zscrn*zrsin)/(-roz + zscrn*zrsin)
+                    rrhA[mScrn] = (zscrn*roz + zrsin)/(zscrn*roz - zrsin)
+                mRem = ~mScrn
+                if npy.any(mRem):
+                    dFull = (dr*phy + xS) if state.ifar == 5 else d
+                    m2 = mRem & (state.ifar != 4) & ((state.cl - dFull) <= 0.0)
+                    if npy.any(m2):
+                        rrvA[m2] = rrv2
+                        rrhA[m2] = rrh2
+                        arg[m2] += darg
+                exa = npy.exp(1j*arg)*curTot
+                tix, tiy, tiz = exa*cabS, exa*sabS, exa*salpS
+                cdp = (tix*phx + tiy*phy)*(rrhA - rrvA)
+                cix = npy.sum(tix*rrvA + cdp*phx)
+                ciy = npy.sum(tiy*rrvA + cdp*phy)
+                ciz = -npy.sum(tiz*rrvA)
+            else:
+                exa = npy.exp(1j*arg)*curTot
+                cix = npy.sum(exa*cabS)
+                ciy = npy.sum(exa*sabS)
+                ciz = npy.sum(exa*salpS)
 
             if k != 1:
                 if state.ifar < 2:
-                    cdp = (cix * phx + ciy * phy) * (rrh - rrv)
-                    cix = ccx + cix * rrv + cdp * phx
-                    ciy = ccy + ciy * rrv + cdp * phy
-                    ciz = ccz - ciz * rrv
+                    cdp = (cix*phx + ciy*phy)*(rrh - rrv)
+                    cix = ccx + cix*rrv + cdp*phx
+                    ciy = ccy + ciy*rrv + cdp*phy
+                    ciz = ccz - ciz*rrv
                 else:
                     cix += ccx
                     ciy += ccy
                     ciz += ccz
 
         if state.m <= 0:
-            return (cix * thx + ciy * thy + ciz * thz) * const, (cix * phx + ciy * phy) * const
-
-    roz = roz_s
+            eth = (cix*thx + ciy*thy + ciz*thz)*const
+            eph = (cix*phx + ciy*phy)*const
+            return eth, eph
+    roz = rozS
     rfl = -1.0
     ex = ey = ez = 0j
     for ip in range(1, state.ksymp + 1):
         rfl = -rfl
-        gx, gy, gz = fflds(state, cur[state.n :], x, y, z, bi, rox, roy, roz * rfl, ld)
+        gx, gy, gz = fflds(
+            state, cur[state.n:], x, y, z, bi, rox, roy, roz*rfl, ld
+        )
         if ip != 2:
             ex, ey, ez = gx, gy, gz
         else:
             if state.iperf == 1:
                 gx, gy, gz = -gx, -gy, -gz
             else:
-                rrv = cmath.sqrt(1.0 - state.zrati * state.zrati * thz * thz)
-                rrh = (state.zrati * roz - rrv) / (state.zrati * roz + rrv)
-                rrv = -(roz - state.zrati * rrv) / (roz + state.zrati * rrv)
-                eth_t = (gx * phx + gy * phy) * (rrh - rrv)
-                gx, gy, gz = gx * rrv + eth_t * phx, gy * rrv + eth_t * phy, gz * rrv
+                rrv = cmath.sqrt(1.0 - state.zrati*state.zrati*thz*thz)
+                rrh = (state.zrati*roz - rrv)/(state.zrati*roz + rrv)
+                rrv = -(roz - state.zrati*rrv)/(roz + state.zrati*rrv)
+                ethT = (gx*phx + gy*phy)*(rrh - rrv)
+                gx = gx*rrv + ethT*phx
+                gy = gy*rrv + ethT*phy
+                gz = gz*rrv
             ex, ey, ez = ex + gx, ey + gy, ez - gz
 
-    ex += cix * const
-    ey += ciy * const
-    ez += ciz * const
-    return ex * thx + ey * thy + ez * thz, ex * phx + ey * phy
+    ex += cix*const
+    ey += ciy*const
+    ez += ciz*const
+    return ex*thx + ey*thy + ez*thz, ex*phx + ey*phy
+
+
+def fflds(
+    state: NECState, scur, xs, ys, zs, s, rox: float, roy: float,
+    roz: float, ld: int
+):
+    """Vectorized XYZ far electric field due to surface patch currents."""
+    tpi = 6.283185308
+    cons = 188.365j
+    mPatch = state.m
+    if mPatch <= 0:
+        return 0j, 0j, 0j
+
+    idx = npy.arange(ld - 1, ld - 1 - mPatch, -1)
+    arg = tpi*(rox*xs[idx] + roy*ys[idx] + roz*zs[idx])
+    ct = npy.exp(1j*arg)*s[idx]
+    scurMat = scur[:3*mPatch].reshape((mPatch, 3))
+    ex = npy.sum(scurMat[:, 0]*ct)
+    ey = npy.sum(scurMat[:, 1]*ct)
+    ez = npy.sum(scurMat[:, 2]*ct)
+    proj = rox*ex + roy*ey + roz*ez
+    return cons*(proj*rox - ex), cons*(proj*roy - ey), cons*(proj*roz - ez)
 
 
 def gfld(state: NECState, rho: float, phi: float, rz: float, cur, x, y, z, si, bi, salp, air, aii, bir, bii, cir, cii, cab, sab, ld: int, ld3: int):
@@ -408,21 +473,4 @@ def gfld(state: NECState, rho: float, phi: float, rz: float, cur, x, y, z, si, b
     thx, thy, thz = rnz * phy, -rnz * phx, -rho / r
     return cix * thx + ciy * thy + ciz * thz, cix * phx + ciy * phy, cix * rnx + ciy * rny + ciz * rnz
 
-
-def fflds(state: NECState, scur, xs, ys, zs, s, rox: float, roy: float, roz: float, ld: int):
-    """Calculates XYZ components of far electric field due to surface patch currents."""
-    tpi = 6.283185308
-    cons = complex(0.0, 188.365)
-    ex = ey = ez = 0j
-    i = ld
-    for j in range(state.m):
-        i -= 1
-        arg = tpi * (rox * xs[i] + roy * ys[i] + roz * zs[i])
-        ct = complex(math.cos(arg) * s[i], math.sin(arg) * s[i])
-        k = 3 * j
-        ex += complex(scur[k]) * ct
-        ey += complex(scur[k + 1]) * ct
-        ez += complex(scur[k + 2]) * ct
-    ct = rox * ex + roy * ey + roz * ez
-    return cons * (ct * rox - ex), cons * (ct * roy - ey), cons * (ct * roz - ez)
 

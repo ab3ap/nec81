@@ -1,6 +1,6 @@
 import math
 import numpy as npy
-from .nec_state import NECState, TA
+from .necState import NECState, TA
 from .main2 import atgn2, blckin, blckot
 from .datagn2 import patch, arc, conect, helix
 

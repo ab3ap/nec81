@@ -1,6 +1,6 @@
 import math
 import numpy as npy
-from .nec_state import NECState
+from .necState import NECState
 from .main2 import db10, isegno
 
 

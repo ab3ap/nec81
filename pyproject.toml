@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nec81"
 version = "2.2.0"
-description = "Python and NumPy implementation of NEC-81 (NEC-2) antenna modeling code"
+description = "Python and NumPy implementation of NEC-81 (NEC-2)"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -13,6 +13,7 @@ authors = [
 ]
 dependencies = [
     "numpy>=1.24",
+    "scipy>=1.10",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +34,9 @@ nec81 = "nec81.nec81:main"
 mainsa = "nec81.mainsa:run_nec"
 somnec = "nec81.somnec.somnec:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["nec81*"]
+[tool.setuptools]
+packages = ["nec81", "nec81.somnec"]
+
+[tool.setuptools.package-dir]
+nec81 = "src"
 

@@ -1,19 +1,21 @@
+import cmath
+import math
 import numpy as np
 
 
 class SpecialFunctions:
     def __init__(self):
         self._besselInit = False
-        self._besselM = np.zeros(101, dtype=np.int32)
-        self._besselA1 = np.zeros(25, dtype=np.float64)
-        self._besselA2 = np.zeros(25, dtype=np.float64)
+        self._besselM = [0]*101
+        self._besselA1 = [0.0]*25
+        self._besselA2 = [0.0]*25
 
         self._hankelInit = False
-        self._hankelM = np.zeros(101, dtype=np.int32)
-        self._hankelA1 = np.zeros(25, dtype=np.float64)
-        self._hankelA2 = np.zeros(25, dtype=np.float64)
-        self._hankelA3 = np.zeros(25, dtype=np.float64)
-        self._hankelA4 = np.zeros(25, dtype=np.float64)
+        self._hankelM = [0]*101
+        self._hankelA1 = [0.0]*25
+        self._hankelA2 = [0.0]*25
+        self._hankelA3 = [0.0]*25
+        self._hankelA4 = [0.0]*25
 
     def bessel(self, z):
         # BESSEL EVALUATES THE ZERO-ORDER BESSEL FUNCTION AND ITS DERIVATIVE
@@ -29,22 +31,23 @@ class SpecialFunctions:
         if not self._besselInit:
             # INITIALIZATION OF CONSTANTS
             for k in range(1, 26):
-                self._besselA1.__setitem__(k - 1, -0.25/(k*k))
-                self._besselA2.__setitem__(k - 1, 1.0/(k + 1.0))
+                self._besselA1[k - 1] = -0.25/(k*k)
+                self._besselA2[k - 1] = 1.0/(k + 1.0)
             for i in range(1, 102):
                 test = 1.0
                 initVal = 1
                 for k in range(1, 25):
                     initVal = k
-                    test = -test*i*self._besselA1.item(k - 1)
+                    test = -test*i*self._besselA1[k - 1]
                     if test < 1.0e-6:
                         break
-                self._besselM.__setitem__(i - 1, initVal)
+                self._besselM[i - 1] = initVal
             self._besselInit = True
 
-        zms = (z*np.conj(z)).real
+        zC = complex(z)
+        zms = zC.real*zC.real + zC.imag*zC.imag
         if zms <= 1.0e-12:
-            return 1.0 + 0j, -0.5*z
+            return 1.0 + 0j, -0.5*zC
 
         ib = 0
         j0x = 0j
@@ -55,40 +58,42 @@ class SpecialFunctions:
                 ib = 1
             # SERIES EXPANSION
             iz = int(1.0 + zms)
-            miz = self._besselM.item(iz - 1)
+            miz = self._besselM[iz - 1]
             j0 = 1.0 + 0j
             j0p = j0
             zk = j0
-            zi = z*z
+            zi = zC*zC
+            a1 = self._besselA1
+            a2 = self._besselA2
             for k in range(miz):
-                zk = zk*self._besselA1.item(k)*zi
+                zk = zk*a1[k]*zi
                 j0 = j0 + zk
-                j0p = j0p + self._besselA2.item(k)*zk
-            j0p = -0.5*z*j0p
+                j0p = j0p + a2[k]*zk
+            j0p = -0.5*zC*j0p
             if ib == 0:
                 return j0, j0p
             j0x = j0
             j0px = j0p
 
         # ASYMPTOTIC EXPANSION
-        zi = 1.0/z
+        zi = 1.0/zC
         zi2 = zi*zi
         p0z = 1.0 + (p20*zi2 - p10)*zi2
         p1z = 1.0 + (p11 - p21*zi2)*zi2
         q0z = (q20*zi2 - q10)*zi
         q1z = (q11 - q21*zi2)*zi
-        zk = np.exp(fj*(z - pof))
+        zk = cmath.exp(fj*(zC - pof))
         zi2 = 1.0/zk
         cz = 0.5*(zk + zi2)
         sz = fj*0.5*(zi2 - zk)
-        zk = c3*np.sqrt(zi)
+        zk = c3*cmath.sqrt(zi)
         j0 = zk*(p0z*cz - q0z*sz)
         j0p = -zk*(p1z*sz + q1z*cz)
 
         if ib == 0:
             return j0, j0p
 
-        zmsCos = np.cos((np.sqrt(zms) - 6.0)*31.41592654)
+        zmsCos = math.cos((math.sqrt(zms) - 6.0)*31.41592654)
         j0 = 0.5*(j0x*(1.0 + zmsCos) + j0*(1.0 - zmsCos))
         j0p = 0.5*(j0px*(1.0 + zmsCos) + j0p*(1.0 - zmsCos))
         return j0, j0p
@@ -112,24 +117,25 @@ class SpecialFunctions:
             # INITIALIZATION OF CONSTANTS
             psi = -gamma
             for k in range(1, 26):
-                self._hankelA1.__setitem__(k - 1, -0.25/(k*k))
-                self._hankelA2.__setitem__(k - 1, 1.0/(k + 1.0))
+                self._hankelA1[k - 1] = -0.25/(k*k)
+                self._hankelA2[k - 1] = 1.0/(k + 1.0)
                 psi = psi + 1.0/k
-                self._hankelA3.__setitem__(k - 1, psi + psi)
+                self._hankelA3[k - 1] = psi + psi
                 numVal = psi + psi + 1.0/(k + 1.0)
-                self._hankelA4.__setitem__(k - 1, numVal/(k + 1.0))
+                self._hankelA4[k - 1] = numVal/(k + 1.0)
             for i in range(1, 102):
                 test = 1.0
                 initVal = 1
                 for k in range(1, 25):
                     initVal = k
-                    test = -test*i*self._hankelA1.item(k - 1)
-                    if test*self._hankelA3.item(k - 1) < 1.0e-6:
+                    test = -test*i*self._hankelA1[k - 1]
+                    if test*self._hankelA3[k - 1] < 1.0e-6:
                         break
-                self._hankelM.__setitem__(i - 1, initVal)
+                self._hankelM[i - 1] = initVal
             self._hankelInit = True
 
-        zms = (z*np.conj(z)).real
+        zC = complex(z)
+        zms = zC.real*zC.real + zC.imag*zC.imag
         if zms == 0.0:
             raise ValueError('ERROR - HANKEL NOT VALID FOR Z=0.')
 
@@ -142,24 +148,28 @@ class SpecialFunctions:
                 ib = 1
             # SERIES EXPANSION
             iz = int(1.0 + zms)
-            miz = self._hankelM.item(iz - 1)
+            miz = self._hankelM[iz - 1]
             j0 = 1.0 + 0j
             j0p = j0
             y0 = 0j
             y0p = 0j
             zk = j0
-            zi = z*z
+            zi = zC*zC
+            a1 = self._hankelA1
+            a2 = self._hankelA2
+            a3 = self._hankelA3
+            a4 = self._hankelA4
             for k in range(miz):
-                zk = zk*self._hankelA1.item(k)*zi
+                zk = zk*a1[k]*zi
                 j0 = j0 + zk
-                j0p = j0p + self._hankelA2.item(k)*zk
-                y0 = y0 + self._hankelA3.item(k)*zk
-                y0p = y0p + self._hankelA4.item(k)*zk
-            j0p = -0.5*z*j0p
-            clogz = np.log(0.5*z)
+                j0p = j0p + a2[k]*zk
+                y0 = y0 + a3[k]*zk
+                y0p = y0p + a4[k]*zk
+            j0p = -0.5*zC*j0p
+            clogz = cmath.log(0.5*zC)
             y0 = (2.0*j0*clogz - y0)/pi + c2
-            term = 2.0/z + 2.0*j0p*clogz + 0.5*y0p*z
-            y0p = term/pi + c1*z
+            term = 2.0/zC + 2.0*j0p*clogz + 0.5*y0p*zC
+            y0p = term/pi + c1*zC
             h0 = j0 + fj*y0
             h0p = j0p + fj*y0p
             if ib == 0:
@@ -168,20 +178,20 @@ class SpecialFunctions:
             y0pSave = h0p
 
         # ASYMPTOTIC EXPANSION
-        zi = 1.0/z
+        zi = 1.0/zC
         zi2 = zi*zi
         p0z = 1.0 + (p20*zi2 - p10)*zi2
         p1z = 1.0 + (p11 - p21*zi2)*zi2
         q0z = (q20*zi2 - q10)*zi
         q1z = (q11 - q21*zi2)*zi
-        zk = np.exp(fj*(z - p0f))*np.sqrt(zi)*c3
+        zk = cmath.exp(fj*(zC - p0f))*cmath.sqrt(zi)*c3
         h0 = zk*(p0z + fj*q0z)
         h0p = fj*zk*(p1z + fj*q1z)
 
         if ib == 0:
             return h0, h0p
 
-        zmsCos = np.cos((np.sqrt(zms) - 4.0)*31.41592654)
+        zmsCos = math.cos((math.sqrt(zms) - 4.0)*31.41592654)
         h0 = 0.5*(y0Save*(1.0 + zmsCos) + h0*(1.0 - zmsCos))
         h0p = 0.5*(y0pSave*(1.0 + zmsCos) + h0p*(1.0 - zmsCos))
         return h0, h0p

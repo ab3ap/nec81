@@ -31,8 +31,6 @@ class SomnecGridGenerator:
         self.nya = np.array((10, 5, 8), dtype=np.int32)
 
     def computeGrids(self, epr, sig, freq_MHz):
-        # IF SIG .LT. 0. THEN COMPLEX DIELECTRIC CONSTANT = EPR + J*SIG
-        # AND FMHZ IS NOT USED
         if sig < 0.0:
             self.epscf = complex(epr, sig)
         else:
@@ -42,10 +40,6 @@ class SomnecGridGenerator:
         ev = self.eval
         ev.ck2 = 6.283185308
         ev.ck2sq = ev.ck2*ev.ck2
-
-        # SOMMERFELD INTEGRAL EVALUATION USES EXP(-JWT), NEC USES EXP(+JWT),
-        # HENCE NEED CONJG(EPSCF). CONJUGATE OF FIELDS OCCURS IN SUBROUTINE
-        # EVALUA.
         ev.ck1sq = ev.ck2sq*np.conj(self.epscf)
         ev.ck1 = np.sqrt(ev.ck1sq)
         ev.ck1r = ev.ck1.real
@@ -62,70 +56,56 @@ class SomnecGridGenerator:
         ev.ct3 = 0.0625*(erv - ezv)
 
         grids = (self.ar1, self.ar2, self.ar3)
+        for k, gridK in enumerate(grids):
+            nr = int(self.nxa[k])
+            nth = int(self.nya[k])
+            dr = float(self.dxa[k])
+            dth = float(self.dya[k])
+            r0 = float(self.xsa[k])
+            th0 = float(self.ysa[k])
+            irs = 1 if k == 0 else 0
 
-        # LOOP OVER 3 GRID REGIONS
-        for k in range(3):
-            nr = int(self.nxa.item(k))
-            nth = int(self.nya.item(k))
-            dr = float(self.dxa.item(k))
-            dth = float(self.dya.item(k))
-            r = float(self.xsa.item(k)) - dr
-            irs = 0
-            if k == 0:
-                r = float(self.xsa.item(k))
-                irs = 1
+            rVals = r0 + np.arange(irs, nr, dtype=np.float64)*dr
+            thVals = th0 + np.arange(nth, dtype=np.float64)*dth
+            rGrid, thGrid = np.meshgrid(rVals, thVals, indexing="ij")
+            rhoGrid = np.maximum(rGrid*np.cos(thGrid), 1.0e-8)
+            zphGrid = np.where(
+                rGrid*np.sin(thGrid) < 1.0e-7, 0.0, rGrid*np.sin(thGrid)
+            )
+            conGrid = -4.77147j*rGrid*np.exp(1j*ev.ck2*rGrid)
 
-            # LOOP OVER R. (R=SQRT(RHO**2 + (Z+H)**2))
-            for ir in range(irs, nr):
-                r = r + dr
-                thet = float(self.ysa.item(k)) - dth
-
-                # LOOP OVER THETA. (THETA=ATAN((Z+H)/RHO))
+            for iOff in range(nr - irs):
+                ir = irs + iOff
                 for ith in range(nth):
-                    thet = thet + dth
-                    ev.rho = r*np.cos(thet)
-                    ev.zph = r*np.sin(thet)
-                    if ev.rho < 1.0e-7:
-                        ev.rho = 1.0e-8
-                    if ev.zph < 1.0e-7:
-                        ev.zph = 0.0
-
+                    ev.rho = float(rhoGrid[iOff, ith])
+                    ev.zph = float(zphGrid[iOff, ith])
                     erv, ezv, erh, eph = ev.evlua()
-                    rk = ev.ck2*r
-                    denom = complex(np.cos(rk), -np.sin(rk))
-                    con = -complex(0.0, 4.77147)*r/denom
-                    gridK = grids.__getitem__(k)
-                    gridK.__setitem__((ir, ith, 0), erv*con)
-                    gridK.__setitem__((ir, ith, 1), ezv*con)
-                    gridK.__setitem__((ir, ith, 2), erh*con)
-                    gridK.__setitem__((ir, ith, 3), eph*con)
+                    con = conGrid[iOff, ith]
+                    gridK[ir, ith, 0] = erv*con
+                    gridK[ir, ith, 1] = ezv*con
+                    gridK[ir, ith, 2] = erh*con
+                    gridK[ir, ith, 3] = eph*con
 
-        # FILL GRID 1 FOR R EQUAL TO ZERO.
-        cl2 = -complex(0.0, 188.370)*(self.epscf - 1.0)/(self.epscf + 1.0)
+        # Vectorized fill of Grid 1 at r = 0
+        cl2 = -188.370j*(self.epscf - 1.0)/(self.epscf + 1.0)
         cl1 = cl2/(self.epscf + 1.0)
         ezv = self.epscf*cl1
-        dth = float(self.dya.item(0))
-        thet = -dth
-        nth = int(self.nya.item(0))
+        nth = int(self.nya[0])
+        thet = np.arange(nth, dtype=np.float64)*float(self.dya[0])
+        cosT = np.cos(thet[:-1])
+        tfac1 = (1.0 - np.sin(thet[:-1]))/cosT
+        tfac2 = tfac1/cosT
 
-        for ith in range(nth):
-            thet = thet + dth
-            if ith == nth - 1:
-                erv = 0.0 + 0j
-                erh = cl2 - 0.5*cl1
-                eph = -erh
-            else:
-                tfac2 = np.cos(thet)
-                tfac1 = (1.0 - np.sin(thet))/tfac2
-                tfac2 = tfac1/tfac2
-                erv = self.epscf*cl1*tfac1
-                erh = cl1*(tfac2 - 1.0) + cl2
-                eph = cl1*tfac2 - cl2
+        self.ar1[0, :-1, 0] = self.epscf*cl1*tfac1
+        self.ar1[0, :-1, 1] = ezv
+        self.ar1[0, :-1, 2] = cl1*(tfac2 - 1.0) + cl2
+        self.ar1[0, :-1, 3] = cl1*tfac2 - cl2
 
-            self.ar1.__setitem__((0, ith, 0), erv)
-            self.ar1.__setitem__((0, ith, 1), ezv)
-            self.ar1.__setitem__((0, ith, 2), erh)
-            self.ar1.__setitem__((0, ith, 3), eph)
+        erhLast = cl2 - 0.5*cl1
+        self.ar1[0, nth - 1, 0] = 0.0 + 0j
+        self.ar1[0, nth - 1, 1] = ezv
+        self.ar1[0, nth - 1, 2] = erhLast
+        self.ar1[0, nth - 1, 3] = -erhLast
 
     def saveTape21(self, filename, fortranRecord=False):
         # WRITE GRID ON TAPE21

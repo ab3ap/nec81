@@ -2,7 +2,7 @@ import math
 import cmath
 import time
 import numpy as npy
-from .nec_state import NECState
+from .necState import NECState
 
 
 def gwave(state: NECState):

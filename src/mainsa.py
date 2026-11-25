@@ -2,7 +2,7 @@
 
 import math, os, struct
 import numpy as npy
-from .nec_state import NECState, LD, LD2, LD3, LD4, LOADMX, NSMAX, NETMX, NORMF, CVEL, TA
+from .necState import NECState, LD, LD2, LD3, LD4, LOADMX, NSMAX, NETMX, NORMF, CVEL, TA
 from .main2 import cang, db20, isegno, second
 from .nsmaExport import setAdfMetadata, writeAdfFile
 from .plots3d import solverPatchPolygons, plotAntennaGeometry, finalizePlots, recordSweepPoint, plotSession
@@ -736,7 +736,10 @@ def _setup_ground_and_factor(
             state.u2 = state.u*state.u
             if state.nradl != 0:
                 if state.iperf == 2:
-                    msg = " RADIAL WIRE G. S. APPROXIMATION MAY NOT BE USED WITH SOMMERFELD GROUND OPTION\n"
+                    msg = (
+                        " RADIAL WIRE G. S. APPROXIMATION MAY NOT BE USED"
+                        " WITH SOMMERFELD GROUND OPTION\n"
+                    )
                     iw.write(msg)
                     raise RuntimeError(msg.strip())
                 state.scrwl = state.scrwlt/state.wlam
@@ -744,38 +747,50 @@ def _setup_ground_and_factor(
                 state.t1 = fj*2367.067/float(state.nradl)
                 state.t2 = state.scrwr*float(state.nradl)
                 iw.write(
-                    f"                                        RADIAL WIRE GROUND SCREEN\n"
-                    f"                                        {state.nradl:5d} WIRES\n"
-                    f"                                        WIRE LENGTH={state.scrwlt:8.2f} METERS\n"
-                    f"                                        WIRE RADIUS={state.scrwrt:10.3E} METERS\n"
-                    f"                                        MEDIUM UNDER SCREEN -\n"
+                    f"                                        RADIAL WIRE"
+                    f" GROUND SCREEN\n"
+                    f"                                        {state.nradl:5d}"
+                    f" WIRES\n"
+                    f"                                        WIRE LENGTH="
+                    f"{state.scrwlt:8.2f} METERS\n"
+                    f"                                        WIRE RADIUS="
+                    f"{state.scrwrt:10.3E} METERS\n"
+                    f"                                        MEDIUM UNDER"
+                    f" SCREEN -\n"
                 )
             if state.iperf == 2:
                 som_file = somnecPath
                 if som_file is None and os.path.exists("fort.21"):
                     som_file = "fort.21"
 
-                if state.nxa[0] == 0 and som_file is None:
+                if int(state.nxa[0]) == 0 and som_file is None:
                     if not getattr(state, "_somnec_auto", False):
-                        try:
-                            entered = input(
-                                " OPEN UNIT 21 FOR SOMNEC INPUT FILE "
-                                "(OR ENTER TO COMPUTE): "
-                            ).strip()
-                        except EOFError:
+                        import sys
+                        if sys.stdin.isatty():
+                            try:
+                                entered = input(
+                                    " OPEN UNIT 21 FOR SOMNEC INPUT FILE "
+                                    "(OR ENTER TO COMPUTE): "
+                                ).strip()
+                            except EOFError:
+                                entered = ""
+                        else:
                             entered = ""
                         if entered:
                             som_file = entered
                         else:
                             state._somnec_auto = True
 
-                if som_file is not None and state.nxa[0] == 0:
+                if som_file is not None and int(state.nxa[0]) == 0:
                     with open(som_file, "rb") as f21:
                         raw_hdr = f21.read(4)
                         if len(raw_hdr) == 4:
                             rec_le = struct.unpack("<I", raw_hdr)[0]
                             rec_be = struct.unpack(">I", raw_hdr)[0]
-                            skip = 4 if (rec_le == 8624 or rec_be == 8624) else 0
+                            skip = (
+                                4 if (rec_le == 8624 or rec_be == 8624)
+                                else 0
+                            )
                             f21.seek(skip)
                         state.ar1 = npy.fromfile(
                             f21, dtype=npy.complex64, count=440
@@ -787,23 +802,66 @@ def _setup_ground_and_factor(
                             f21, dtype=npy.complex64, count=288
                         ).reshape((9, 8, 4), order="F")
                         state.epscf = complex(
-                            npy.fromfile(f21, dtype=npy.complex64, count=1).item(0)
+                            npy.fromfile(
+                                f21, dtype=npy.complex64, count=1
+                            ).item(0)
                         )
-                        state.dxa = npy.fromfile(f21, dtype=npy.float32, count=3)
-                        state.dya = npy.fromfile(f21, dtype=npy.float32, count=3)
-                        state.xsa = npy.fromfile(f21, dtype=npy.float32, count=3)
-                        state.ysa = npy.fromfile(f21, dtype=npy.float32, count=3)
-                        state.nxa = npy.fromfile(f21, dtype=npy.int32, count=3)
-                        state.nya = npy.fromfile(f21, dtype=npy.int32, count=3)
+                        state.dxa = npy.fromfile(
+                            f21, dtype=npy.float32, count=3
+                        )
+                        state.dya = npy.fromfile(
+                            f21, dtype=npy.float32, count=3
+                        )
+                        state.xsa = npy.fromfile(
+                            f21, dtype=npy.float32, count=3
+                        )
+                        state.ysa = npy.fromfile(
+                            f21, dtype=npy.float32, count=3
+                        )
+                        state.nxa = npy.fromfile(
+                            f21, dtype=npy.int32, count=3
+                        )
+                        state.nya = npy.fromfile(
+                            f21, dtype=npy.int32, count=3
+                        )
                 elif getattr(state, "_somnec_auto", False):
                     from .somnec.somnec import SomnecGridGenerator
                     cache = getattr(state, "_somnec_cache", {})
-                    key = (float(state.epsr), float(state.sig), float(state.fmhz))
+                    eprR = round(float(state.epsr), 6)
+                    sigR = round(float(state.sig), 8)
+                    frqR = round(float(state.fmhz), 6)
+                    key = (eprR, sigR, frqR)
+                    cacheDir = os.path.join(
+                        os.path.expanduser("~"), ".cache", "nec81"
+                    )
+                    cachePath = os.path.join(
+                        cacheDir, f"somnec_{eprR}_{sigR}_{frqR}.npz"
+                    )
+                    if key not in cache and os.path.exists(cachePath):
+                        with npy.load(cachePath) as npzData:
+                            gen = SomnecGridGenerator()
+                            gen.ar1 = npzData["ar1"]
+                            gen.ar2 = npzData["ar2"]
+                            gen.ar3 = npzData["ar3"]
+                            gen.epscf = complex(npzData["epscf"])
+                            gen.dxa = npzData["dxa"]
+                            gen.dya = npzData["dya"]
+                            gen.xsa = npzData["xsa"]
+                            gen.ysa = npzData["ysa"]
+                            gen.nxa = npzData["nxa"]
+                            gen.nya = npzData["nya"]
+                            cache[key] = gen
+                            state._somnec_cache = cache
                     if key not in cache:
                         gen = SomnecGridGenerator()
                         gen.computeGrids(state.epsr, state.sig, state.fmhz)
                         cache[key] = gen
                         state._somnec_cache = cache
+                        try:
+                            os.makedirs(cacheDir, exist_ok=True)
+                            gen.saveGrids(cachePath)
+                        except OSError:
+                            pass
                     gen = cache[key]
                     state.ar1 = gen.ar1.astype(npy.complex64)
                     state.ar2 = gen.ar2.astype(npy.complex64)
@@ -814,6 +872,7 @@ def _setup_ground_and_factor(
                     state.xsa = gen.xsa.astype(npy.float32)
                     state.ysa = gen.ysa.astype(npy.float32)
                     state.nxa = gen.nxa.astype(npy.int32)
+                    state.nya = gen.nya.astype(npy.int32)
                     state.nya = gen.nya.astype(npy.int32)
 
                 state.frati = (epsc - 1.0)/(epsc + 1.0)

@@ -254,5 +254,5 @@ class NECState:
         entries."""
         if min_elements > self.iresrv or self.cm.size < min_elements:
             self.iresrv = int(min_elements)
-            self.cm = npy.zeros(self.iresrv, dtype=npy.complex64)
+            self.cm = npy.zeros(self.iresrv, dtype=npy.complex128)
 
