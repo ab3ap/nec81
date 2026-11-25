@@ -108,7 +108,13 @@ and
 
 <h2>Installation</h2>
 
-<p>The core solver requires only <code>numpy</code>, with optional extras for Matplotlib plots and the PySide6 GUI. Install directly via <a href="https://github.com">GitHub</a> or download the latest release archives:</p>
+<p>The core solver requires only <code>numpy</code>, with optional extras
+for Matplotlib plots and the PySide6 GUI.  be sure you have the latest
+version.  The initial line by line port following the Fortran was slow.  It
+has been updated using vectorization throughout and is significantly faster
+than that first port.  Install directly via <a
+href="https://github.com">GitHub</a> or download the latest release
+archives:</p>
 
 <h3>Install from GitHub</h3>
 <pre><code># Core solver (headless)
