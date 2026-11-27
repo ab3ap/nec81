@@ -166,9 +166,9 @@ class SomnecGridGenerator:
                 f'    R(1)={r1:7.4f}    DR={dr:7.4f}    NR={nr:3d}\n'
                 f' THET(1)={th1:7.4f}   DTH={dth:7.4f}   NTH={nth:3d}\n\n'
             )
-            gridK = grids.__getitem__(k)
+            gridK = grids[k]
             for lIdx in range(4):
-                print(f'\n\n\n {lcomp.__getitem__(lIdx)}')
+                print(f'\n\n\n {lcomp[lIdx]}')
                 for ir in range(nr):
                     print(f' IR={ir + 1:3d}')
                     vals = list()
@@ -179,7 +179,7 @@ class SomnecGridGenerator:
                     for idx in range(0, len(lineStr), 120):
                         endIdx = idx + 120
                         chunk = ''.join(
-                            lineStr.__getitem__(c)
+                            lineStr[c]
                             for c in range(idx, min(endIdx, len(lineStr)))
                         )
                         print(' ' + chunk)

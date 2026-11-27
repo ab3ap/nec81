@@ -106,6 +106,29 @@ and
   supporting self-documented configuration files and an interactive GUI.
 </p>
 
+<p>
+NEC-2/NEC-81 is old and improvements have left it behind in some areas.
+<a href=https://udel.edu/~mm/nec5/>NEC-5</a> has dealt with many
+shortcomings, but unfortunately must be 
+<a href=https://udel.edu/~mm/nec5/>licensed from LLNL</a>.  As an Army
+worker, I was lucky to qualify to get source for free.  Here are some known
+shortcomings of NEC-81:
+</p>
+
+<p>
+<ul>
+<li>Can't do buried wires, poor job on very low wires.
+<li>Wire joint discontinuity issues if radii differ - like Yagi tubing!
+<li>Magnetic Field Integral Equation works only on closed bodies.
+<li>Source at segment center.  (NEC-5 at segment end.)
+<li>Can't fully model insulated wire, i.e., no velocity shift.
+<li>Close wires like a dipole fan.
+</ul>
+</p>
+
+<p>If they don't affect you, you are good to go!  If they do, just be aware
+that there is some error in the modeling results.
+
 <h2>Installation</h2>
 
 <p>The core solver requires only <code>numpy</code>, with optional extras
